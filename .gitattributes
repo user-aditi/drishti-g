@@ -1,0 +1,7 @@
+# Normalise line endings so the three of us can work on different machines
+# without every file showing as modified.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.pdf binary
