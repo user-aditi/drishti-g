@@ -1,5 +1,4 @@
 import type {
-  AdminStats,
   AuditEvent,
   AuthResponse,
   Category,
@@ -7,17 +6,27 @@ import type {
   Complaint,
   ComplaintDetail,
   ComplaintStats,
+  CrewMember,
   Department,
+  DeskItem,
+  EscalationInboxItem,
+  GeographyTree,
+  Job,
+  MapPin,
   Notification,
+  OrgChart,
+  OversightStats,
   Paged,
+  Rank,
   RiskDetail,
   RiskEntityType,
   RiskFlag,
   RoutingDecision,
-  Task,
+  Sector,
+  SectorPerformance,
+  SectorRisk,
+  Trade,
   User,
-  Ward,
-  WardRisk,
 } from './types'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api/v1'
@@ -153,29 +162,46 @@ export const api = {
     password: string
     fullName: string
     phone?: string
-    wardId?: number | null
+    homeSectorId?: number | null
   }) => request<AuthResponse>('/auth/register', { method: 'POST', body: payload, auth: false }),
 
   me: () => request<User>('/auth/me'),
 
   // --- Reference data ---
-  wards: () => request<Ward[]>('/wards'),
+  geography: () => request<GeographyTree[]>('/geography'),
+  sectors: () => request<Sector[]>('/sectors'),
   departments: () => request<Department[]>('/departments'),
   categories: () => request<Category[]>('/categories'),
+  ranks: () =>
+    request<{ rank: Rank; level: number; label: string; jurisdiction: string }[]>('/ranks'),
+  trades: () => request<{ trade: Trade; label: string }[]>('/trades'),
+  orgChart: (departmentId: number) => request<OrgChart>(`/departments/${departmentId}/chart`),
+  sectorStaff: (sectorId: number) =>
+    request<{ sector: unknown; staff: unknown[] }>(`/sectors/${sectorId}/staff`),
 
-  // --- Complaints ---
+  // --- Complaints (citizen + shared) ---
   fileComplaint: (form: FormData) =>
     request<{ complaint: Complaint; routing: RoutingDecision }>('/complaints', {
       method: 'POST',
       body: form,
     }),
 
-  complaints: (params: { status?: string; q?: string; wardId?: number; page?: number; size?: number } = {}) =>
-    request<Paged<Complaint>>(`/complaints${qs(params)}`),
+  complaints: (
+    params: {
+      status?: string
+      sectorId?: number
+      departmentId?: number
+      scope?: 'mine' | 'jurisdiction' | 'all'
+      q?: string
+      page?: number
+      size?: number
+    } = {},
+  ) => request<Paged<Complaint>>(`/complaints${qs(params)}`),
 
   complaint: (id: number) => request<ComplaintDetail>(`/complaints/${id}`),
-
   complaintStats: () => request<ComplaintStats>('/complaints/stats'),
+  mapPins: (params: { status?: 'open' | 'all'; departmentId?: number } = {}) =>
+    request<{ items: MapPin[]; total: number }>(`/complaints/map${qs(params)}`),
 
   submitFeedback: (id: number, rating: number, comment?: string) =>
     request<Complaint>(`/complaints/${id}/feedback`, { method: 'POST', body: { rating, comment } }),
@@ -183,18 +209,53 @@ export const api = {
   closeComplaint: (id: number, note?: string) =>
     request<Complaint>(`/complaints/${id}/close`, { method: 'POST', body: { note } }),
 
-  // --- Tasks (field official) ---
-  tasks: (scope: 'active' | 'all' | 'done' = 'active') =>
-    request<{ items: Task[]; total: number }>(`/tasks${qs({ scope })}`),
+  // --- Section Officer's desk ---
+  desk: (scope: 'active' | 'awaiting' | 'done' = 'active') =>
+    request<{ items: DeskItem[]; total: number }>(`/officer/desk${qs({ scope })}`),
 
-  updateTaskStatus: (id: number, form: FormData) =>
-    request<Complaint>(`/tasks/${id}/status`, { method: 'POST', body: form }),
+  crewFor: (complaintId: number) =>
+    request<{ items: CrewMember[]; preferredTrade: Trade | null; exactTradeAvailable: boolean }>(
+      `/officer/complaints/${complaintId}/workers`,
+    ),
+
+  allotJob: (complaintId: number, workerId: number, instructions?: string) =>
+    request<Complaint>(`/officer/complaints/${complaintId}/allot`, {
+      method: 'POST',
+      body: { workerId, instructions },
+    }),
+
+  verifyWork: (complaintId: number, accept: boolean, note?: string) =>
+    request<Complaint>(`/officer/complaints/${complaintId}/verify`, {
+      method: 'POST',
+      body: { accept, note },
+    }),
+
+  disposeComplaint: (complaintId: number, form: FormData) =>
+    request<Complaint>(`/officer/complaints/${complaintId}/dispose`, { method: 'POST', body: form }),
+
+  // --- Field worker ---
+  jobs: (scope: 'active' | 'done' = 'active') =>
+    request<{ items: Job[]; total: number }>(`/worker/jobs${qs({ scope })}`),
+
+  job: (id: number) => request<Job>(`/worker/jobs/${id}`),
+
+  completeJob: (id: number, form: FormData) =>
+    request<{ id: number; status: string; evidenceUrl: string; message: string }>(
+      `/worker/jobs/${id}/complete`,
+      { method: 'POST', body: form },
+    ),
+
+  reportJobIssue: (id: number, form: FormData) =>
+    request<{ id: number; message: string }>(`/worker/jobs/${id}/report-issue`, {
+      method: 'POST',
+      body: form,
+    }),
 
   // --- GRIE ---
   riskQueue: (status = 'PENDING') =>
     request<{ items: RiskFlag[]; total: number; threshold: number }>(`/risk/queue${qs({ status })}`),
 
-  wardRisk: () => request<{ items: WardRisk[]; threshold: number }>('/risk/wards'),
+  sectorRisk: () => request<{ items: SectorRisk[]; threshold: number }>('/risk/sectors'),
 
   riskDetail: (entityType: RiskEntityType, entityId: number) =>
     request<RiskDetail>(`/risk/${entityType}/${entityId}`),
@@ -204,23 +265,40 @@ export const api = {
 
   recomputeRisk: () => request<{ recomputed: unknown }>('/risk/recompute', { method: 'POST' }),
 
+  // --- Oversight ---
+  oversightStats: () => request<OversightStats>('/admin/stats'),
+  sectorPerformance: () => request<{ items: SectorPerformance[] }>('/admin/sector-performance'),
+  escalationInbox: () =>
+    request<{ items: EscalationInboxItem[]; total: number }>('/admin/escalations'),
+  acknowledgeEscalation: (id: number) =>
+    request<unknown>(`/admin/escalations/${id}/acknowledge`, { method: 'POST' }),
+  runEscalationSweep: () =>
+    request<{ checked: number; escalated: unknown[] }>('/admin/escalations/sweep', {
+      method: 'POST',
+    }),
+
+  // --- Super Admin ---
+  users: (params: { rank?: string; departmentId?: number; sectorId?: number; q?: string; page?: number } = {}) =>
+    request<Paged<User>>(`/admin/users${qs(params)}`),
+
+  updateUser: (id: number, payload: Record<string, unknown>) =>
+    request<User>(`/admin/users/${id}`, { method: 'PATCH', body: payload }),
+
+  createStaff: (payload: Record<string, unknown>) =>
+    request<User>('/staff', { method: 'POST', body: payload }),
+
+  transferStaff: (id: number, payload: Record<string, unknown>) =>
+    request<User>(`/staff/${id}/transfer`, { method: 'POST', body: payload }),
+
+  updateDepartment: (id: number, payload: Record<string, unknown>) =>
+    request<Department>(`/departments/${id}`, { method: 'PATCH', body: payload }),
+
   // --- Notifications ---
   notifications: () => request<{ items: Notification[]; unread: number }>('/notifications'),
   markRead: (id: number) => request<{ updated: number }>(`/notifications/${id}/read`, { method: 'POST' }),
   markAllRead: () => request<{ updated: number }>('/notifications/read-all', { method: 'POST' }),
 
-  // --- Admin ---
-  adminStats: () => request<AdminStats>('/admin/stats'),
-
-  users: (params: { role?: string; q?: string; page?: number } = {}) =>
-    request<Paged<User>>(`/admin/users${qs(params)}`),
-
-  createUser: (payload: Record<string, unknown>) =>
-    request<User>('/admin/users', { method: 'POST', body: payload }),
-
-  updateUser: (id: number, payload: Record<string, unknown>) =>
-    request<User>(`/admin/users/${id}`, { method: 'PATCH', body: payload }),
-
+  // --- Audit ---
   auditTrail: (params: { entityType?: string; action?: string; page?: number; size?: number } = {}) =>
     request<Paged<AuditEvent>>(`/admin/audit${qs(params)}`),
 

@@ -3,7 +3,7 @@
  *
  * Postgres stays the system of record. The graph exists so "who is connected to
  * what" is a traversal rather than a join — which is what GCCE needs for routing
- * and GRIE needs to propagate risk from a project to its contractor and ward.
+ * and GRIE needs to propagate risk from a project to its contractor and sector.
  *
  * Every write is a MERGE, so re-running a sync is safe and the graph can always
  * be rebuilt from Postgres if it drifts.
@@ -49,11 +49,12 @@ export async function syncComplaint(complaintId: number): Promise<void> {
     )
 
     const edges: Array<[number | null, string, string]> = [
-      [complaint.wardId, 'Ward', 'OCCURRED_IN'],
+      [complaint.sectorId, 'Sector', 'OCCURRED_IN'],
       [complaint.departmentId, 'Department', 'OWNED_BY'],
       [complaint.categoryId, 'Category', 'OF_CATEGORY'],
       [complaint.citizenId, 'User', 'FILED_BY'],
-      [complaint.assignedToId, 'User', 'ASSIGNED_TO'],
+      [complaint.assignedOfficerId, 'User', 'ASSIGNED_TO'],
+      [complaint.assignedWorkerId, 'User', 'WORKED_BY'],
     ]
     for (const [targetId, label, rel] of edges) {
       if (targetId == null) continue
@@ -78,7 +79,10 @@ export function scheduleComplaintSync(complaintId: number): void {
 
 export interface SyncCounts {
   departments: number
-  wards: number
+  zones: number
+  circles: number
+  sectors: number
+  postings: number
   categories: number
   users: number
   contractors: number
@@ -88,12 +92,15 @@ export interface SyncCounts {
 
 /** Rebuild the whole projection from Postgres. Idempotent. */
 export async function fullSync(): Promise<SyncCounts> {
-  const [departments, wards, categories, users, contractors, projects, complaints] =
+  const [departments, zones, circles, sectors, categories, users, postings, contractors, projects, complaints] =
     await Promise.all([
       prisma.department.findMany(),
-      prisma.ward.findMany(),
+      prisma.zone.findMany(),
+      prisma.circle.findMany(),
+      prisma.sector.findMany(),
       prisma.complaintCategory.findMany(),
       prisma.user.findMany(),
+      prisma.posting.findMany({ where: { endedAt: null } }),
       prisma.contractor.findMany(),
       prisma.project.findMany(),
       prisma.complaint.findMany(),
@@ -108,12 +115,30 @@ export async function fullSync(): Promise<SyncCounts> {
       })
     }
 
-    for (const w of wards) {
+    for (const z of zones) {
+      await session.run('MERGE (z:Zone {id: $id}) SET z.code = $code, z.name = $name', {
+        id: z.id,
+        code: z.code,
+        name: z.name,
+      })
+    }
+
+    for (const c of circles) {
+      await session.run('MERGE (c:Circle {id: $id}) SET c.code = $code, c.name = $name', {
+        id: c.id,
+        code: c.code,
+        name: c.name,
+      })
+      await link(session, { label: 'Circle', id: c.id }, { label: 'Zone', id: c.zoneId }, 'IN_ZONE')
+    }
+
+    for (const s of sectors) {
       await session.run(
-        `MERGE (w:Ward {id: $id})
-         SET w.number = $number, w.name = $name, w.zone = $zone, w.lat = $lat, w.lon = $lon`,
-        { id: w.id, number: w.wardNumber, name: w.name, zone: w.zone, lat: w.centroidLat, lon: w.centroidLon },
+        `MERGE (s:Sector {id: $id})
+         SET s.number = $number, s.name = $name, s.lat = $lat, s.lon = $lon`,
+        { id: s.id, number: s.number, name: s.name, lat: s.centroidLat, lon: s.centroidLon },
       )
+      await link(session, { label: 'Sector', id: s.id }, { label: 'Circle', id: s.circleId }, 'IN_CIRCLE')
     }
 
     for (const c of categories) {
@@ -126,15 +151,31 @@ export async function fullSync(): Promise<SyncCounts> {
 
     for (const u of users) {
       await session.run(
-        'MERGE (u:User {id: $id}) SET u.name = $name, u.role = $role, u.active = $active',
-        { id: u.id, name: u.fullName, role: u.role, active: u.isActive },
+        'MERGE (u:User {id: $id}) SET u.name = $name, u.rank = $rank, u.active = $active',
+        { id: u.id, name: u.fullName, rank: u.rank, active: u.isActive },
       )
-      // These edges are what make assignee lookup a one-hop traversal.
-      if (u.departmentId != null) {
-        await link(session, { label: 'User', id: u.id }, { label: 'Department', id: u.departmentId }, 'MEMBER_OF')
+    }
+
+    // Postings are what connect a person to a department and a patch of the
+    // city, so they carry the edges that make "who covers this sector?" a
+    // one-hop traversal instead of a filtered scan.
+    for (const p of postings) {
+      if (p.departmentId != null) {
+        await link(
+          session,
+          { label: 'User', id: p.userId },
+          { label: 'Department', id: p.departmentId },
+          'MEMBER_OF',
+        )
       }
-      if (u.wardId != null) {
-        await link(session, { label: 'User', id: u.id }, { label: 'Ward', id: u.wardId }, 'SERVES')
+      const area: Array<[number | null, string]> = [
+        [p.sectorId, 'Sector'],
+        [p.circleId, 'Circle'],
+        [p.zoneId, 'Zone'],
+      ]
+      for (const [id, label] of area) {
+        if (id == null) continue
+        await link(session, { label: 'User', id: p.userId }, { label, id }, 'SERVES')
       }
     }
 
@@ -154,8 +195,8 @@ export async function fullSync(): Promise<SyncCounts> {
       if (p.contractorId != null) {
         await link(session, { label: 'Contractor', id: p.contractorId }, { label: 'Project', id: p.id }, 'EXECUTES')
       }
-      if (p.wardId != null) {
-        await link(session, { label: 'Project', id: p.id }, { label: 'Ward', id: p.wardId }, 'LOCATED_IN')
+      if (p.sectorId != null) {
+        await link(session, { label: 'Project', id: p.id }, { label: 'Sector', id: p.sectorId }, 'LOCATED_IN')
       }
     }
   })
@@ -164,7 +205,10 @@ export async function fullSync(): Promise<SyncCounts> {
 
   const counts: SyncCounts = {
     departments: departments.length,
-    wards: wards.length,
+    zones: zones.length,
+    circles: circles.length,
+    sectors: sectors.length,
+    postings: postings.length,
     categories: categories.length,
     users: users.length,
     contractors: contractors.length,

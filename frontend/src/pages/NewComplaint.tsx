@@ -68,20 +68,18 @@ function RoutingResult({
               </dd>
             </div>
             <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Ward</dt>
+              <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Sector</dt>
               <dd className="mt-1 text-sm font-medium text-slate-900">
-                {complaint.ward
-                  ? `Ward ${complaint.ward.wardNumber} — ${complaint.ward.name}`
-                  : '—'}
+                {complaint.sector ? `Sector ${complaint.sector.number}` : '—'}
               </dd>
             </div>
             <div>
               <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Assigned to
+                Officer responsible
               </dt>
               <dd className="mt-1 text-sm font-medium text-slate-900">
-                {complaint.assignedTo?.fullName ?? (
-                  <span className="text-amber-600">Pending assignment</span>
+                {complaint.assignedOfficer?.fullName ?? (
+                  <span className="text-amber-600">Awaiting posting</span>
                 )}
               </dd>
             </div>
@@ -154,7 +152,7 @@ export default function NewComplaint() {
       () =>
         setGeo({
           status: 'denied',
-          message: 'Location unavailable — your registered ward will be used instead.',
+          message: 'Location unavailable — your registered sector will be used instead.',
         }),
       { timeout: 8000 },
     )
@@ -204,8 +202,8 @@ export default function NewComplaint() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader
-        title="File a complaint"
-        description="Describe the issue and we will route it to the right department automatically."
+        title="Report an issue"
+        description="Describe what you have seen. GCCE works out the department, the sector and the officer responsible."
       />
 
       <form onSubmit={submit} className="space-y-5">
@@ -338,7 +336,7 @@ export default function NewComplaint() {
               id="address"
               className="field"
               maxLength={500}
-              placeholder="e.g. Near Shahpura Lake, opposite the bus stop"
+              placeholder="e.g. Near the DPS gate, opposite the bus stop"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
             />
@@ -358,7 +356,7 @@ export default function NewComplaint() {
             </span>
             <span>
               {geo.status === 'found' &&
-                `Location captured (${geo.lat.toFixed(4)}, ${geo.lon.toFixed(4)}) — GCCE will use it to identify your ward.`}
+                `Location captured (${geo.lat.toFixed(4)}, ${geo.lon.toFixed(4)}) — GCCE will use it to identify your sector.`}
               {geo.status === 'locating' && 'Getting your location…'}
               {geo.status === 'denied' && geo.message}
               {geo.status === 'idle' && 'Location not requested yet.'}

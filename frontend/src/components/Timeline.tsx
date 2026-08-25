@@ -1,4 +1,4 @@
-import { ROLE_LABEL, STATUS_META, formatDateTime } from '../lib/format'
+import { RANK_LABEL, STATUS_META, formatDateTime } from '../lib/format'
 import type { HistoryEntry } from '../lib/types'
 
 /**
@@ -55,7 +55,7 @@ export default function Timeline({ history }: { history: HistoryEntry[] }) {
                 entry.actor && (
                   <span className="text-xs text-slate-500">
                     {entry.actor.fullName}
-                    <span className="text-slate-400"> · {ROLE_LABEL[entry.actor.role]}</span>
+                    <span className="text-slate-400"> · {RANK_LABEL[entry.actor.rank]}</span>
                   </span>
                 )
               )}

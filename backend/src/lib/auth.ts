@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import type { UserRole } from '@prisma/client'
+import type { Rank } from '@prisma/client'
 import { env } from '../config/env.js'
 
 const SALT_ROUNDS = 10
@@ -10,7 +10,7 @@ export type TokenType = 'access' | 'refresh'
 export interface TokenPayload {
   sub: string
   type: TokenType
-  role?: UserRole
+  rank?: Rank
 }
 
 export function hashPassword(plain: string): Promise<string> {
@@ -23,8 +23,8 @@ export function verifyPassword(plain: string, hashed: string): Promise<boolean> 
   return bcrypt.compare(plain, hashed).catch(() => false)
 }
 
-export function signToken(userId: number, type: TokenType, role?: UserRole): string {
-  const payload: TokenPayload = { sub: String(userId), type, ...(role ? { role } : {}) }
+export function signToken(userId: number, type: TokenType, rank?: Rank): string {
+  const payload: TokenPayload = { sub: String(userId), type, ...(rank ? { rank } : {}) }
   return jwt.sign(payload, env.JWT_SECRET, {
     expiresIn: type === 'access' ? env.ACCESS_TOKEN_TTL : env.REFRESH_TOKEN_TTL,
   } as jwt.SignOptions)

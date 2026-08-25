@@ -48,25 +48,41 @@ const identity = (raw: number): number => Math.max(0, Math.min(100, raw))
 
 const pct = (raw: number) => `${Math.round(raw * 100)}%`
 
-// --- Factor definitions per entity type -------------------------------------
+// --- Factor definitions -----------------------------------------------------
 // Weights within each set sum to 1.0. They are the tunable part of the model:
 // the paper's fine-tuning step adjusts these and reports the before/after.
 
-export const WARD_FACTORS: Factor[] = [
-  {
-    key: 'repeatComplaintRate',
-    label: 'Repeat complaints',
-    weight: 0.35,
-    normalise: proportion,
-    describe: (raw) =>
-      raw > 0
-        ? `${pct(raw)} of complaints here repeat an issue already reported in this ward.`
-        : 'No repeated complaints in this ward.',
-  },
+/**
+ * How many open complaints reads as "completely saturated", per scope.
+ *
+ * This has to be scope-aware. A single sector is in serious trouble at 25 open
+ * complaints — that is the same threshold GCCE uses to start escalating new
+ * arrivals — whereas a zone aggregating six sectors would hit 25 on a good day.
+ * One shared cap made the factor inert at sector level and hair-trigger at zone
+ * level.
+ */
+export const LOAD_CAP: Record<RiskEntityType, number> = {
+  [RiskEntityType.SECTOR]: 25,
+  [RiskEntityType.CIRCLE]: 70,
+  [RiskEntityType.ZONE]: 180,
+  [RiskEntityType.DEPARTMENT]: 250,
+  [RiskEntityType.PROJECT]: 20,
+  [RiskEntityType.CONTRACTOR]: 20,
+}
+
+/**
+ * Shared by every geographic scope.
+ *
+ * A sector, a circle and a zone are the same kind of thing at different
+ * magnifications, so they are judged on the same five measures — which also
+ * means a circle's score is directly comparable to its sectors'. Only the load
+ * cap changes with scope, via `areaFactorsFor`.
+ */
+export const AREA_FACTORS: Factor[] = [
   {
     key: 'slaBreachRate',
     label: 'Missed deadlines',
-    weight: 0.3,
+    weight: 0.28,
     normalise: proportion,
     describe: (raw) =>
       raw > 0
@@ -74,20 +90,43 @@ export const WARD_FACTORS: Factor[] = [
         : 'Every complaint was resolved within its deadline.',
   },
   {
-    key: 'openComplaintLoad',
-    label: 'Open complaint load',
-    weight: 0.2,
-    normalise: linear(100),
+    key: 'repeatComplaintRate',
+    label: 'Repeat complaints',
+    weight: 0.27,
+    normalise: proportion,
     describe: (raw) =>
       raw > 0
-        ? `${Math.round(raw)} complaints are currently open in this ward.`
+        ? `${pct(raw)} of complaints here repeat an issue already reported in this area.`
+        : 'No repeated complaints in this area.',
+  },
+  {
+    key: 'escalationRate',
+    label: 'Escalations',
+    weight: 0.2,
+    normalise: proportion,
+    describe: (raw) =>
+      raw > 0
+        ? `${pct(raw)} of complaints had to be escalated to a senior officer.`
+        : 'No complaint needed escalating to a senior officer.',
+  },
+  {
+    key: 'openComplaintLoad',
+    label: 'Open complaint load',
+    weight: 0.15,
+    normalise: linear(LOAD_CAP[RiskEntityType.SECTOR]),
+    describe: (raw) =>
+      raw > 0
+        ? `${Math.round(raw)} complaints are currently open here.`
         : 'No complaints are currently open.',
   },
   {
     key: 'avgResolutionDays',
     label: 'Resolution speed',
-    weight: 0.15,
-    normalise: linear(30),
+    weight: 0.1,
+    // 14 days, not 30: the loosest SLA in the system is 96 hours, so a
+    // fortnight to close a complaint is already a complete failure, not a
+    // midpoint.
+    normalise: linear(14),
     describe: (raw) =>
       raw > 0
         ? `Complaints take ${raw.toFixed(1)} days to resolve on average.`
@@ -131,7 +170,7 @@ export const PROJECT_FACTORS: Factor[] = [
     normalise: linear(20),
     describe: (raw) =>
       raw > 0
-        ? `${Math.round(raw)} citizen complaints are linked to this project's ward.`
+        ? `${Math.round(raw)} citizen complaints are linked to this project's sector.`
         : 'No linked citizen complaints.',
   },
 ]
@@ -173,8 +212,19 @@ export const CONTRACTOR_FACTORS: Factor[] = [
   },
 ]
 
+/** The area factor set with its load cap set for this scope. */
+function areaFactorsFor(entityType: RiskEntityType): Factor[] {
+  const cap = LOAD_CAP[entityType]
+  return AREA_FACTORS.map((f) =>
+    f.key === 'openComplaintLoad' ? { ...f, normalise: linear(cap) } : f,
+  )
+}
+
 export const FACTOR_SETS: Record<RiskEntityType, Factor[]> = {
-  [RiskEntityType.WARD]: WARD_FACTORS,
+  [RiskEntityType.SECTOR]: areaFactorsFor(RiskEntityType.SECTOR),
+  [RiskEntityType.CIRCLE]: areaFactorsFor(RiskEntityType.CIRCLE),
+  [RiskEntityType.ZONE]: areaFactorsFor(RiskEntityType.ZONE),
+  [RiskEntityType.DEPARTMENT]: areaFactorsFor(RiskEntityType.DEPARTMENT),
   [RiskEntityType.PROJECT]: PROJECT_FACTORS,
   [RiskEntityType.CONTRACTOR]: CONTRACTOR_FACTORS,
 }

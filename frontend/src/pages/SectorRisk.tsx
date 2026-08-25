@@ -10,30 +10,30 @@ import {
   SectionHeading,
 } from '../components/ui'
 import { BAND_META, relativeTime } from '../lib/format'
-import type { WardRisk as Ward } from '../lib/types'
+import type { SectorRisk as Row } from '../lib/types'
 
-export default function WardRisk() {
-  const [wards, setWards] = useState<Ward[]>([])
+export default function SectorRisk() {
+  const [sectors, setSectors] = useState<Row[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     api
-      .wardRisk()
+      .sectorRisk()
       .then((res) => {
         // Riskiest first: this page exists to answer "where is the problem?"
         const sorted = [...res.items].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
-        setWards(sorted)
-        setSelectedId(sorted[0]?.wardId ?? null)
+        setSectors(sorted)
+        setSelectedId(sorted[0]?.sectorId ?? null)
       })
-      .catch(() => setError('Could not load ward risk scores.'))
+      .catch(() => setError('Could not load sector risk scores.'))
       .finally(() => setLoading(false))
   }, [])
 
   const selected = useMemo(
-    () => wards.find((w) => w.wardId === selectedId) ?? null,
-    [wards, selectedId],
+    () => sectors.find((s) => s.sectorId === selectedId) ?? null,
+    [sectors, selectedId],
   )
 
   if (loading) {
@@ -47,47 +47,46 @@ export default function WardRisk() {
 
   if (error) return <ErrorBanner message={error} />
 
-  if (wards.length === 0) {
+  if (sectors.length === 0) {
     return (
       <EmptyState
-        icon="🗺️"
-        title="No wards scored yet"
+        icon="📍"
+        title="No sectors scored yet"
         description="Run a recompute from the risk queue to generate scores."
       />
     )
   }
 
-  const scored = wards.filter((w) => w.score != null)
+  const scored = sectors.filter((s) => s.score != null)
   const cityAverage =
-    scored.length > 0 ? scored.reduce((sum, w) => sum + (w.score ?? 0), 0) / scored.length : 0
+    scored.length > 0 ? scored.reduce((sum, s) => sum + (s.score ?? 0), 0) / scored.length : 0
 
   return (
     <div>
       <PageHeader
-        title="Ward risk"
-        description="Every ward scored on repeat complaints, missed deadlines, open load and resolution speed."
+        title="Sector risk"
+        description="Every sector scored on missed deadlines, repeat complaints, escalations, open load and speed."
       />
 
       <div className="grid gap-5 lg:grid-cols-5">
-        {/* Left: the ranking. */}
         <div className="lg:col-span-2">
           <div className="card overflow-hidden">
             <div className="flex items-baseline justify-between border-b border-slate-100 px-4 py-3">
-              <h2 className="text-sm font-semibold text-slate-800">All wards</h2>
+              <h2 className="text-sm font-semibold text-slate-800">All sectors</h2>
               <span className="tnum text-xs text-slate-500">
-                city average {cityAverage.toFixed(0)}
+                authority average {cityAverage.toFixed(0)}
               </span>
             </div>
 
-            <ul className="divide-y divide-slate-100">
-              {wards.map((ward) => {
-                const active = ward.wardId === selectedId
-                const meta = ward.band ? BAND_META[ward.band] : null
+            <ul className="max-h-[560px] divide-y divide-slate-100 overflow-y-auto">
+              {sectors.map((s) => {
+                const active = s.sectorId === selectedId
+                const meta = s.band ? BAND_META[s.band] : null
 
                 return (
-                  <li key={ward.wardId}>
+                  <li key={s.sectorId}>
                     <button
-                      onClick={() => setSelectedId(ward.wardId)}
+                      onClick={() => setSelectedId(s.sectorId)}
                       aria-current={active}
                       className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${
                         active ? 'bg-brand-50' : 'hover:bg-slate-50'
@@ -98,24 +97,22 @@ export default function WardRisk() {
                           meta ? meta.className : 'bg-slate-100 text-slate-400'
                         }`}
                       >
-                        {ward.score == null ? '—' : Math.round(ward.score)}
+                        {s.score == null ? '—' : Math.round(s.score)}
                       </span>
 
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-slate-900">
-                          Ward {ward.wardNumber} — {ward.name}
+                          Sector {s.number} — {s.name}
                         </span>
-                        <span className="block text-xs text-slate-500">
-                          {ward.zone ?? 'Zone not set'}
-                          {meta && ` · ${meta.label} risk`}
+                        <span className="block truncate text-xs text-slate-500">
+                          {s.circle} · {s.zone}
                         </span>
                       </span>
 
-                      {/* Score as a mini bar, so the ranking reads at a glance. */}
                       <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 sm:block">
                         <span
                           className={`block h-full rounded-full ${meta?.bar ?? 'bg-slate-300'}`}
-                          style={{ width: `${ward.score ?? 0}%` }}
+                          style={{ width: `${s.score ?? 0}%` }}
                         />
                       </span>
                     </button>
@@ -126,13 +123,12 @@ export default function WardRisk() {
           </div>
         </div>
 
-        {/* Right: the explanation for whichever ward is selected. */}
         <div className="lg:col-span-3">
           {selected == null || selected.score == null || selected.band == null ? (
             <EmptyState
               icon="📊"
               title="Not scored yet"
-              description="This ward has no complaint history to score against."
+              description="This sector has no complaint history to score against."
             />
           ) : (
             <div className="card-pad">
@@ -140,10 +136,10 @@ export default function WardRisk() {
                 <RiskDial score={selected.score} band={selected.band} />
                 <div className="min-w-0">
                   <h2 className="text-lg font-bold text-slate-900">
-                    Ward {selected.wardNumber} — {selected.name}
+                    Sector {selected.number} — {selected.name}
                   </h2>
                   <p className="mt-0.5 text-sm text-slate-500">
-                    {selected.zone ?? 'Zone not set'}
+                    {selected.circle} · {selected.zone}
                   </p>
                   {selected.computedAt && (
                     <p className="mt-1 text-xs text-slate-400">

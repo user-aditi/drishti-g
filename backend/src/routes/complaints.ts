@@ -2,22 +2,29 @@
  * Complaint filing and tracking.
  *
  * Filing is where GCCE runs: the citizen supplies what they saw, and everything
- * else — category, ward, department, assignee, priority, deadline — is decided
- * by the engine and recorded with its reasoning.
+ * else — category, sector, department, the accountable officer, priority and
+ * deadline — is decided by the engine and recorded with its reasoning.
  */
 import { Router } from 'express'
-import { ComplaintStatus, Prisma, UserRole } from '@prisma/client'
+import { ComplaintStatus, DepartmentStatus, Prisma, Rank } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
-import { authenticate, requireRole } from '../middleware/auth.js'
+import { authenticate, requireCircleOfficer } from '../middleware/auth.js'
 import { uploadPhoto, photoUrl } from '../middleware/upload.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
-import { canTransition, routeComplaint } from '../services/gcce.js'
+import { OPEN_STATUSES, canTransition, routeComplaint } from '../services/gcce.js'
 import { scheduleComplaintSync } from '../services/graphSync.js'
-import { scheduleWardRescore } from '../services/riskSignals.js'
-import { asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
-import { publicComplaint, referenceNoFor } from '../utils/serialize.js'
+import {
+  hasJurisdiction,
+  isAuthorityWide,
+  isOfficer,
+  sectorsInScope,
+  departmentsInScope,
+} from '../services/hierarchy.js'
+import { scheduleSectorRescore } from '../services/riskSignals.js'
+import { asyncHandler, badRequest, forbidden, notFound, unprocessable } from '../utils/http.js'
+import { COMPLAINT_INCLUDE, publicComplaint, referenceNoFor } from '../utils/serialize.js'
 
 export const complaintsRouter: Router = Router()
 
@@ -30,24 +37,48 @@ const createSchema = z.object({
   latitude: z.coerce.number().min(-90).max(90).optional(),
   longitude: z.coerce.number().min(-180).max(180).optional(),
   address: z.string().max(500).optional(),
+  landmark: z.string().max(200).optional(),
 })
 
 const listSchema = z.object({
   status: z.nativeEnum(ComplaintStatus).optional(),
-  wardId: z.coerce.number().int().positive().optional(),
+  sectorId: z.coerce.number().int().positive().optional(),
   departmentId: z.coerce.number().int().positive().optional(),
+  scope: z.enum(['mine', 'jurisdiction', 'all']).default('jurisdiction'),
   q: z.string().max(200).optional(),
   page: z.coerce.number().int().min(1).default(1),
   size: z.coerce.number().int().min(1).max(100).default(20),
 })
 
-const includeRelations = {
-  category: true,
-  department: true,
-  ward: true,
-  citizen: true,
-  assignedTo: true,
-} satisfies Prisma.ComplaintInclude
+/**
+ * Build the visibility filter for the caller.
+ *
+ * Scoping happens here rather than in the UI: a Junior Engineer must not be
+ * able to read another circle's complaints by editing a query string, and a
+ * citizen must only ever see their own.
+ */
+async function visibilityFilter(
+  user: NonNullable<Express.Request['user']>,
+  scope: 'mine' | 'jurisdiction' | 'all',
+): Promise<Prisma.ComplaintWhereInput> {
+  if (user.rank === Rank.CITIZEN) return { citizenId: user.id }
+
+  if (user.rank === Rank.FIELD_WORKER) return { assignedWorkerId: user.id }
+
+  if (scope === 'mine') return { assignedOfficerId: user.id }
+
+  if (isAuthorityWide(user.rank)) return {}
+
+  const [sectors, departments] = await Promise.all([
+    sectorsInScope(prisma, user.id),
+    departmentsInScope(prisma, user.id),
+  ])
+
+  const where: Prisma.ComplaintWhereInput = {}
+  if (sectors !== null) where.sectorId = { in: sectors }
+  if (departments !== null) where.departmentId = { in: departments }
+  return where
+}
 
 /**
  * File a complaint.
@@ -58,12 +89,26 @@ const includeRelations = {
  */
 complaintsRouter.post(
   '/',
-  requireRole(UserRole.CITIZEN, UserRole.ADMIN),
   uploadPhoto,
   validate(createSchema),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof createSchema>
     const actor = req.user!
+
+    // A citizen chosing a category by hand must not be able to file into a
+    // department that is not live yet.
+    if (body.categoryId != null) {
+      const category = await prisma.complaintCategory.findUnique({
+        where: { id: body.categoryId },
+        include: { department: true },
+      })
+      if (!category) throw unprocessable('That category does not exist')
+      if (category.department.status !== DepartmentStatus.ACTIVE) {
+        throw unprocessable(
+          `${category.department.name} is not accepting complaints yet. ${category.department.roadmapNote ?? ''}`.trim(),
+        )
+      }
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const created = await tx.complaint.create({
@@ -76,6 +121,7 @@ complaintsRouter.post(
           latitude: body.latitude ?? null,
           longitude: body.longitude ?? null,
           address: body.address ?? null,
+          landmark: body.landmark ?? null,
           photoUrl: req.file ? photoUrl(req.file.filename) : null,
         },
       })
@@ -98,14 +144,14 @@ complaintsRouter.post(
 
       const full = await tx.complaint.findUniqueOrThrow({
         where: { id: complaint.id },
-        include: includeRelations,
+        include: COMPLAINT_INCLUDE,
       })
       return { complaint: full, decision }
     })
 
     // Fired after the transaction commits so neither can roll it back.
     scheduleComplaintSync(result.complaint.id)
-    if (result.decision.wardId != null) scheduleWardRescore(result.decision.wardId)
+    if (result.decision.sectorId != null) scheduleSectorRescore(result.decision.sectorId)
 
     res.status(201).json({
       complaint: publicComplaint(result.complaint),
@@ -114,27 +160,17 @@ complaintsRouter.post(
   }),
 )
 
-/**
- * List complaints, scoped to what the caller is allowed to see.
- *
- * Scoping happens here rather than in the UI: a citizen must not be able to read
- * another citizen's complaints by editing a query string.
- */
 complaintsRouter.get(
   '/',
   validate(listSchema, 'query'),
   asyncHandler(async (req, res) => {
-    const { status, wardId, departmentId, q, page, size } = req.query as unknown as z.infer<
-      typeof listSchema
-    >
+    const { status, sectorId, departmentId, scope, q, page, size } =
+      req.query as unknown as z.infer<typeof listSchema>
     const actor = req.user!
 
-    const where: Prisma.ComplaintWhereInput = {}
-    if (actor.role === UserRole.CITIZEN) where.citizenId = actor.id
-    else if (actor.role === UserRole.FIELD_OFFICIAL) where.assignedToId = actor.id
-
+    const where = await visibilityFilter(actor, scope)
     if (status) where.status = status
-    if (wardId) where.wardId = wardId
+    if (sectorId) where.sectorId = sectorId
     if (departmentId) where.departmentId = departmentId
     if (q) {
       where.OR = [
@@ -147,7 +183,7 @@ complaintsRouter.get(
     const [items, total] = await Promise.all([
       prisma.complaint.findMany({
         where,
-        include: includeRelations,
+        include: COMPLAINT_INCLUDE,
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * size,
         take: size,
@@ -159,14 +195,12 @@ complaintsRouter.get(
   }),
 )
 
-/** Counts by status for the caller's own scope — drives the dashboard tiles. */
+/** Counts for the caller's own scope — drives the dashboard tiles. */
 complaintsRouter.get(
   '/stats',
   asyncHandler(async (req, res) => {
     const actor = req.user!
-    const where: Prisma.ComplaintWhereInput = {}
-    if (actor.role === UserRole.CITIZEN) where.citizenId = actor.id
-    else if (actor.role === UserRole.FIELD_OFFICIAL) where.assignedToId = actor.id
+    const where = await visibilityFilter(actor, 'jurisdiction')
 
     const grouped = await prisma.complaint.groupBy({
       by: ['status'],
@@ -179,15 +213,14 @@ complaintsRouter.get(
     ) as Record<ComplaintStatus, number>
     for (const row of grouped) byStatus[row.status] = row._count._all
 
-    const open =
-      byStatus.SUBMITTED + byStatus.ROUTED + byStatus.ASSIGNED + byStatus.IN_PROGRESS
-    const overdue = await prisma.complaint.count({
-      where: {
-        ...where,
-        slaDueAt: { lt: new Date() },
-        status: { in: [ComplaintStatus.SUBMITTED, ComplaintStatus.ROUTED, ComplaintStatus.ASSIGNED, ComplaintStatus.IN_PROGRESS] },
-      },
-    })
+    const [overdue, escalated] = await Promise.all([
+      prisma.complaint.count({
+        where: { ...where, slaDueAt: { lt: new Date() }, status: { in: OPEN_STATUSES } },
+      }),
+      prisma.complaint.count({ where: { ...where, escalationLevel: { gt: 0 } } }),
+    ])
+
+    const open = OPEN_STATUSES.reduce((sum, s) => sum + byStatus[s], 0)
 
     res.json({
       byStatus,
@@ -195,29 +228,88 @@ complaintsRouter.get(
       open,
       resolved: byStatus.RESOLVED + byStatus.CLOSED,
       overdue,
+      escalated,
     })
   }),
 )
 
-/** Anyone may see a complaint they are party to; admins see everything. */
-async function loadVisibleComplaint(id: number, actor: Express.Request['user']) {
+/** Map pins for the caller's jurisdiction. */
+complaintsRouter.get(
+  '/map',
+  validate(
+    z.object({
+      status: z.enum(['open', 'all']).default('open'),
+      departmentId: z.coerce.number().int().positive().optional(),
+    }),
+    'query',
+  ),
+  asyncHandler(async (req, res) => {
+    const { status, departmentId } = req.query as unknown as {
+      status: 'open' | 'all'
+      departmentId?: number
+    }
+    const actor = req.user!
+
+    const where = await visibilityFilter(actor, 'jurisdiction')
+    if (status === 'open') where.status = { in: OPEN_STATUSES }
+    if (departmentId) where.departmentId = departmentId
+    where.latitude = { not: null }
+    where.longitude = { not: null }
+
+    const items = await prisma.complaint.findMany({
+      where,
+      select: {
+        id: true,
+        referenceNo: true,
+        title: true,
+        latitude: true,
+        longitude: true,
+        status: true,
+        priority: true,
+        slaDueAt: true,
+        escalationLevel: true,
+        category: { select: { name: true, icon: true } },
+        sector: { select: { id: true, number: true, name: true } },
+        department: { select: { id: true, name: true, icon: true } },
+      },
+      take: 1000,
+      orderBy: { createdAt: 'desc' },
+    })
+
+    res.json({ items, total: items.length })
+  }),
+)
+
+async function loadVisibleComplaint(id: number, actor: NonNullable<Express.Request['user']>) {
   const complaint = await prisma.complaint.findUnique({
     where: { id },
     include: {
-      ...includeRelations,
+      ...COMPLAINT_INCLUDE,
       history: {
-        include: { actor: { select: { id: true, fullName: true, role: true } } },
+        include: { actor: { select: { id: true, fullName: true, rank: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+      escalations: {
+        include: { toUser: { select: { id: true, fullName: true } } },
         orderBy: { createdAt: 'asc' },
       },
     },
   })
   if (!complaint) throw notFound('That complaint does not exist')
 
-  const isOwner = complaint.citizenId === actor!.id
-  const isAssignee = complaint.assignedToId === actor!.id
-  if (actor!.role !== UserRole.ADMIN && !isOwner && !isAssignee) {
-    throw forbidden('You do not have access to this complaint')
+  const isOwner = complaint.citizenId === actor.id
+  const isAssigned =
+    complaint.assignedOfficerId === actor.id || complaint.assignedWorkerId === actor.id
+
+  if (!isOwner && !isAssigned) {
+    if (!isOfficer(actor.rank)) throw forbidden('You do not have access to this complaint')
+    const permitted = await hasJurisdiction(prisma, actor, {
+      departmentId: complaint.departmentId,
+      sectorId: complaint.sectorId,
+    })
+    if (!permitted) throw forbidden('This complaint is outside your jurisdiction')
   }
+
   return complaint
 }
 
@@ -225,7 +317,7 @@ complaintsRouter.get(
   '/:id',
   validate(z.object({ id: z.coerce.number().int().positive() }), 'params'),
   asyncHandler(async (req, res) => {
-    const complaint = await loadVisibleComplaint(Number(req.params.id), req.user)
+    const complaint = await loadVisibleComplaint(Number(req.params.id), req.user!)
     res.json({
       ...publicComplaint(complaint),
       history: complaint.history.map((h) => ({
@@ -235,7 +327,16 @@ complaintsRouter.get(
         note: h.note,
         evidenceUrl: h.evidenceUrl,
         createdAt: h.createdAt,
-        actor: h.actor ? { id: h.actor.id, fullName: h.actor.fullName, role: h.actor.role } : null,
+        actor: h.actor ? { id: h.actor.id, fullName: h.actor.fullName, rank: h.actor.rank } : null,
+      })),
+      escalations: complaint.escalations.map((e) => ({
+        id: e.id,
+        fromRank: e.fromRank,
+        toRank: e.toRank,
+        reason: e.reason,
+        hoursOverdue: e.hoursOverdue,
+        createdAt: e.createdAt,
+        toUser: e.toUser,
       })),
     })
   }),
@@ -269,7 +370,7 @@ complaintsRouter.post(
       const saved = await tx.complaint.update({
         where: { id },
         data: { feedbackRating: rating, feedbackComment: comment ?? null },
-        include: includeRelations,
+        include: COMPLAINT_INCLUDE,
       })
       await audit.record(tx, {
         action: 'complaint.feedback',
@@ -287,14 +388,13 @@ complaintsRouter.post(
 )
 
 /**
- * Supervisor closure.
- *
- * Kept separate from the official's status updates: closing is a sign-off, and
- * only an admin may do it.
+ * Sign-off. Restricted to Circle Officer and above — a Junior Engineer must not
+ * close their own section's work, which is the separation the manual process
+ * relies on.
  */
 complaintsRouter.post(
   '/:id/close',
-  requireRole(UserRole.ADMIN),
+  requireCircleOfficer,
   validate(z.object({ id: z.coerce.number().int().positive() }), 'params'),
   validate(z.object({ note: z.string().max(1000).optional() })),
   asyncHandler(async (req, res) => {
@@ -304,9 +404,16 @@ complaintsRouter.post(
 
     const complaint = await prisma.complaint.findUnique({ where: { id } })
     if (!complaint) throw notFound('That complaint does not exist')
+
+    const permitted = await hasJurisdiction(prisma, actor, {
+      departmentId: complaint.departmentId,
+      sectorId: complaint.sectorId,
+    })
+    if (!permitted) throw forbidden('This complaint is outside your jurisdiction')
+
     if (!canTransition(complaint.status, ComplaintStatus.CLOSED)) {
       throw badRequest(
-        `A complaint that is ${complaint.status.toLowerCase()} cannot be closed — it must be resolved first`,
+        `A complaint that is ${complaint.status.toLowerCase().replace(/_/g, ' ')} cannot be closed — it must be resolved first`,
       )
     }
 
@@ -314,7 +421,7 @@ complaintsRouter.post(
       const saved = await tx.complaint.update({
         where: { id },
         data: { status: ComplaintStatus.CLOSED, closedAt: new Date() },
-        include: includeRelations,
+        include: COMPLAINT_INCLUDE,
       })
       await tx.complaintStatusHistory.create({
         data: {
@@ -322,7 +429,7 @@ complaintsRouter.post(
           fromStatus: complaint.status,
           toStatus: ComplaintStatus.CLOSED,
           actorId: actor.id,
-          note: note ?? 'Closed by supervisor.',
+          note: note ?? `Closed by ${actor.designationTitle ?? 'supervising officer'}.`,
         },
       })
       await tx.notification.create({
@@ -345,7 +452,7 @@ complaintsRouter.post(
     })
 
     scheduleComplaintSync(id)
-    if (updated.wardId != null) scheduleWardRescore(updated.wardId)
+    if (updated.sectorId != null) scheduleSectorRescore(updated.sectorId)
 
     res.json(publicComplaint(updated))
   }),

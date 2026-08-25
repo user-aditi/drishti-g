@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ApiError, api } from '../lib/api'
 import { ErrorBanner, Spinner } from '../components/ui'
-import type { Ward } from '../lib/types'
+import type { Sector } from '../lib/types'
 
 export default function Register() {
   const { register } = useAuth()
@@ -15,19 +15,19 @@ export default function Register() {
     email: '',
     phone: '',
     password: '',
-    wardId: '',
+    homeSectorId: '',
   })
-  const [wards, setWards] = useState<Ward[]>([])
+  const [sectors, setSectors] = useState<Sector[]>([])
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // The ward list sits behind auth, so an anonymous visitor simply gets no
-  // options and picks a ward later. Failing quietly is correct here.
+  // The sector list sits behind auth, so an anonymous visitor simply gets no
+  // options and picks a sector later. Failing quietly is correct here.
   useEffect(() => {
     api
-      .wards()
-      .then(setWards)
-      .catch(() => setWards([]))
+      .sectors()
+      .then(setSectors)
+      .catch(() => setSectors([]))
   }, [])
 
   const update = (key: keyof typeof form, value: string) =>
@@ -43,7 +43,7 @@ export default function Register() {
         email: form.email,
         password: form.password,
         phone: form.phone || undefined,
-        wardId: form.wardId ? Number(form.wardId) : null,
+        homeSectorId: form.homeSectorId ? Number(form.homeSectorId) : null,
       })
       navigate('/', { replace: true })
     } catch (err) {
@@ -130,21 +130,21 @@ export default function Register() {
             </div>
           </div>
 
-          {wards.length > 0 && (
+          {sectors.length > 0 && (
             <div>
-              <label className="label" htmlFor="wardId">
-                Your ward <span className="font-normal text-slate-400">(optional)</span>
+              <label className="label" htmlFor="homeSectorId">
+                Your sector <span className="font-normal text-slate-400">(optional)</span>
               </label>
               <select
-                id="wardId"
+                id="homeSectorId"
                 className="field"
-                value={form.wardId}
-                onChange={(e) => update('wardId', e.target.value)}
+                value={form.homeSectorId}
+                onChange={(e) => update('homeSectorId', e.target.value)}
               >
-                <option value="">Select your ward</option>
-                {wards.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    Ward {w.wardNumber} &mdash; {w.name}
+                <option value="">Select your sector</option>
+                {sectors.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    Sector {s.number} &mdash; {s.name}
                   </option>
                 ))}
               </select>

@@ -7,9 +7,32 @@ import { ErrorBanner, Spinner } from '../components/ui'
 
 /** Seeded accounts, so a reviewer can get in without reading the README. */
 const DEMO_ACCOUNTS = [
-  { email: 'admin@drishti.gov.in', label: 'Supervisor', hint: 'Dashboard, risk queue, audit trail' },
-  { email: 'swm.ward5@drishti.gov.in', label: 'Field Official', hint: 'Task inbox for the busiest ward' },
-  { email: 'citizen@example.com', label: 'Citizen', hint: 'File and track complaints' },
+  {
+    email: 'admin@drishti.gov.in',
+    label: 'Super Admin',
+    hint: 'Every department, every zone, the whole org chart',
+  },
+  {
+    email: 'gm.civil@noidaauthority.in',
+    label: 'General Manager (Civil)',
+    hint: 'Department-wide oversight and the risk queue',
+  },
+  {
+    email: 'ee.wc5.civil@noidaauthority.in',
+    label: 'Executive Engineer',
+    hint: 'Work Circle 5 — the escalations land here',
+  },
+  {
+    email: 'je.s5.civil@noidaauthority.in',
+    label: 'Junior Engineer',
+    hint: 'Sector 5 desk — allot work to your crew',
+  },
+  {
+    email: 'worker1.s5.civil@noidaauthority.in',
+    label: 'Beldar',
+    hint: 'Field worker — the phone view',
+  },
+  { email: 'citizen@example.com', label: 'Citizen', hint: 'Report an issue and track it' },
 ]
 
 export default function Login() {
@@ -61,7 +84,7 @@ export default function Login() {
           <div>
             <div className="font-bold tracking-tight text-white">DRISHTI-G</div>
             <div className="text-xs uppercase tracking-wide text-slate-400">
-              Municipal Governance Platform
+              NOIDA Authority
             </div>
           </div>
         </div>
@@ -71,27 +94,30 @@ export default function Login() {
             One coordinator. One risk radar that explains itself.
           </h1>
           <p className="mt-4 leading-relaxed text-slate-300">
-            Every complaint, inspection and payment flows through a single engine — so nothing
-            falls between departments, and problems surface before they become expensive.
+            Every complaint travels the authority's real chain of command — Junior Engineer to
+            Executive Engineer to General Manager — so nothing falls between departments, and
+            problems surface before they become expensive.
           </p>
 
           <dl className="mt-10 space-y-5">
             <div className="border-l-2 border-brand-500 pl-4">
               <dt className="text-sm font-semibold text-white">GCCE — the coordinator</dt>
               <dd className="mt-0.5 text-sm text-slate-400">
-                Routes every action to the right desk and records why it went there.
+                Routes every complaint to the officer responsible for that sector, and escalates
+                it upward when a deadline is missed.
               </dd>
             </div>
             <div className="border-l-2 border-brand-500 pl-4">
               <dt className="text-sm font-semibold text-white">GRIE — the risk radar</dt>
               <dd className="mt-0.5 text-sm text-slate-400">
-                Scores wards, contractors and projects, and always shows its reasoning.
+                Scores sectors, circles, zones, contractors and projects — and always shows its
+                reasoning.
               </dd>
             </div>
           </dl>
         </div>
 
-        <p className="text-xs text-slate-500">Capstone project · Bhopal Municipal Corporation</p>
+        <p className="text-xs text-slate-500">Capstone project · New Okhla Industrial Development Authority</p>
       </div>
 
       {/* Right: the form. */}

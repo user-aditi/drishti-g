@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import ComplaintCard from '../components/ComplaintCard'
 import { CardSkeleton, EmptyState, ErrorBanner, PageHeader, StatTile } from '../components/ui'
+import { isOpen } from '../lib/format'
 import type { Complaint, ComplaintStats } from '../lib/types'
 
 type Filter = 'all' | 'open' | 'resolved'
@@ -37,7 +38,7 @@ export default function CitizenHome() {
   // Filtering happens client-side: a citizen's own list is small enough that a
   // round trip per tab would be slower than the render.
   const visible = complaints.filter((c) => {
-    if (filter === 'open') return ['SUBMITTED', 'ROUTED', 'ASSIGNED', 'IN_PROGRESS'].includes(c.status)
+    if (filter === 'open') return isOpen(c.status)
     if (filter === 'resolved') return ['RESOLVED', 'CLOSED'].includes(c.status)
     return true
   })
@@ -51,7 +52,7 @@ export default function CitizenHome() {
         description="Track the issues you have reported and file new ones."
         action={
           <Link to="/complaints/new" className="btn-primary">
-            <span aria-hidden>➕</span> File a complaint
+            <span aria-hidden>➕</span> Report an issue
           </Link>
         }
       />

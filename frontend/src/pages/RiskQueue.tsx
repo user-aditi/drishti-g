@@ -14,7 +14,10 @@ import { formatDateTime, relativeTime } from '../lib/format'
 import type { ReviewStatus, RiskDetail, RiskFlag } from '../lib/types'
 
 const ENTITY_ICON: Record<string, string> = {
-  WARD: '🏘️',
+  SECTOR: '📍',
+  CIRCLE: '🧭',
+  ZONE: '🗺️',
+  DEPARTMENT: '🏛️',
   CONTRACTOR: '🏗️',
   PROJECT: '📐',
 }
@@ -201,7 +204,7 @@ export default function RiskQueue() {
     <div>
       <PageHeader
         title="Risk review queue"
-        description={`GRIE flags anything scoring ${threshold} or above. Every score shows its own reasoning.`}
+        description={`GRIE flags any sector, circle, zone, department, project or contractor scoring ${threshold} or above — and always shows its reasoning.`}
         action={
           <button onClick={() => void recompute()} className="btn-secondary" disabled={recomputing}>
             {recomputing && <Spinner />}
@@ -244,7 +247,7 @@ export default function RiskQueue() {
           title={status === 'PENDING' ? 'Nothing needs review' : 'Nothing here'}
           description={
             status === 'PENDING'
-              ? `No ward, contractor or project is currently scoring ${threshold} or above.`
+              ? `Nothing is currently scoring ${threshold} or above.`
               : 'No flags have reached this state yet.'
           }
         />

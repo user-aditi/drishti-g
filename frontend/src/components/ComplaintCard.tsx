@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { deadlineLabel, formatDate, isOpen, relativeTime } from '../lib/format'
+import { DEADLINE_TONE, deadlineLabel, formatDate, isOpen, relativeTime } from '../lib/format'
 import type { Complaint } from '../lib/types'
 import { PriorityPill, StatusPill } from './ui'
 
@@ -20,13 +20,6 @@ export default function ComplaintCard({
 }) {
   const open = isOpen(complaint.status)
   const deadline = deadlineLabel(complaint.slaDueAt, open)
-
-  const deadlineTone = {
-    overdue: 'bg-red-50 text-red-700 border-red-200',
-    urgent: 'bg-amber-50 text-amber-700 border-amber-200',
-    normal: 'bg-slate-50 text-slate-600 border-slate-200',
-    none: 'bg-slate-50 text-slate-500 border-slate-200',
-  }[deadline.tone]
 
   return (
     <Link
@@ -55,17 +48,18 @@ export default function ComplaintCard({
 
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-500">
             <span className="font-mono text-[11px] text-slate-400">{complaint.referenceNo}</span>
-            {complaint.ward && (
-              <span>
-                Ward {complaint.ward.wardNumber} · {complaint.ward.name}
-              </span>
-            )}
+            {complaint.sector && <span>Sector {complaint.sector.number}</span>}
             {complaint.department && <span>{complaint.department.name}</span>}
             <span title={formatDate(complaint.createdAt)}>{relativeTime(complaint.createdAt)}</span>
 
             {showDeadline && complaint.slaDueAt && (
-              <span className={`rounded border px-1.5 py-0.5 font-medium ${deadlineTone}`}>
+              <span className={`rounded px-1.5 py-0.5 font-medium ${DEADLINE_TONE[deadline.tone]}`}>
                 {deadline.text}
+              </span>
+            )}
+            {complaint.escalationLevel > 0 && (
+              <span className="pill bg-purple-100 text-purple-800">
+                ⬆️ Escalated
               </span>
             )}
             {complaint.priority !== 'MEDIUM' && <PriorityPill priority={complaint.priority} />}

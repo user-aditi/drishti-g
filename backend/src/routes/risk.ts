@@ -7,10 +7,10 @@
  * to fetch a bare number.
  */
 import { Router } from 'express'
-import { ReviewStatus, RiskEntityType, UserRole } from '@prisma/client'
+import { ReviewStatus, RiskEntityType } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
-import { authenticate, requireRole } from '../middleware/auth.js'
+import { authenticate, requireCircleOfficer, requireOfficer } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
 import { FACTOR_SETS, REVIEW_THRESHOLD, MODEL_VERSION } from '../services/grie.js'
@@ -25,7 +25,9 @@ import { asyncHandler, notFound } from '../utils/http.js'
 
 export const riskRouter: Router = Router()
 
-riskRouter.use(authenticate, requireRole(UserRole.ADMIN))
+// Any officer may read the risk picture for their patch; acting on a flag is
+// restricted to Circle Officer and above.
+riskRouter.use(authenticate, requireOfficer)
 
 /** The supervisor review queue: most severe first, then most recent. */
 riskRouter.get(
@@ -68,20 +70,26 @@ riskRouter.get(
   }),
 )
 
-/** Current score for every ward — powers the admin overview. */
+/** Current score for every sector — powers the overview and the map. */
 riskRouter.get(
-  '/wards',
+  '/sectors',
   asyncHandler(async (_req, res) => {
-    const wards = await prisma.ward.findMany({ orderBy: { wardNumber: 'asc' } })
+    const sectors = await prisma.sector.findMany({
+      include: { circle: { include: { zone: true } } },
+      orderBy: { number: 'asc' },
+    })
 
     const items = await Promise.all(
-      wards.map(async (ward) => {
-        const score = await latestScore(RiskEntityType.WARD, ward.id)
+      sectors.map(async (sector) => {
+        const score = await latestScore(RiskEntityType.SECTOR, sector.id)
         return {
-          wardId: ward.id,
-          wardNumber: ward.wardNumber,
-          name: ward.name,
-          zone: ward.zone,
+          sectorId: sector.id,
+          number: sector.number,
+          name: sector.name,
+          circle: sector.circle.name,
+          zone: sector.circle.zone.name,
+          centroidLat: sector.centroidLat,
+          centroidLon: sector.centroidLon,
           score: score?.score ?? null,
           band: score?.band ?? null,
           factors: score?.factors ?? [],
@@ -169,6 +177,7 @@ riskRouter.post(
 /** Recompute everything. Useful after seeding or a bulk import. */
 riskRouter.post(
   '/recompute',
+  requireCircleOfficer,
   asyncHandler(async (req, res) => {
     const counts = await recomputeAll()
     await prisma.$transaction((tx) =>
@@ -189,6 +198,7 @@ riskRouter.post(
 /** Act on a flag. This is the human decision GRIE exists to prompt. */
 riskRouter.post(
   '/flags/:id/review',
+  requireCircleOfficer,
   validate(z.object({ id: z.coerce.number().int().positive() }), 'params'),
   validate(
     z.object({

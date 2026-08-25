@@ -1,4 +1,9 @@
-// DRISHTI-G data model.
+// DRISHTI-G data model — NOIDA Authority.
+//
+// Noida is administered by NOIDA (New Okhla Industrial Development Authority),
+// a UP state development authority, not a municipal corporation. Its geography
+// is sectors grouped into work circles grouped into zones, and its staff sit on
+// a real chain of command that complaints escalate up.
 //
 // Postgres is the system of record. Neo4j holds a derived projection of the
 // relationships GCCE and GRIE traverse; it can always be rebuilt from here.
@@ -12,19 +17,62 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  CITIZEN
-  FIELD_OFFICIAL
-  ADMIN
+// ---------------------------------------------------------------------------
+// Chain of command
+// ---------------------------------------------------------------------------
+
+/// Where someone sits in the hierarchy.
+///
+/// Escalation walks this ladder upward, so the order matters. `RANK_LEVEL` in
+/// src/services/hierarchy.ts is the numeric mapping and must stay in step.
+enum Rank {
+  CITIZEN //         0 — the public
+  FIELD_WORKER //    1 — safai karamchari, lineman, beldar: does the physical work
+  SECTION_OFFICER // 2 — junior engineer / sanitary inspector: triages a sector
+  CIRCLE_OFFICER //  3 — executive engineer: runs a work circle
+  ZONAL_OFFICER //   4 — superintending engineer: runs a zone
+  HOD //             5 — general manager / chief engineer: runs a department
+  CEO //             6 — chief executive officer: runs the authority
+  SUPER_ADMIN //     7 — system owner, full access to every department
 }
 
+/// The geographic scope a posting covers.
+enum JurisdictionLevel {
+  AUTHORITY // the whole of Noida
+  ZONE
+  CIRCLE
+  SECTOR
+}
+
+/// A field worker's trade. Determines which jobs they can be given.
+enum Trade {
+  SAFAI_KARAMCHARI // sanitation worker
+  LINEMAN //          street lighting and electrical
+  BELDAR //           civil labour: roads, footpaths
+  MASON //            civil finishing work
+  PLUMBER //          water and sewer lines
+  MALI //             horticulture
+  DRIVER //           vehicle operator
+}
+
+/// Whether a department is live or still on the roadmap.
+enum DepartmentStatus {
+  ACTIVE //      accepting complaints
+  COMING_SOON // listed in the UI, cannot receive complaints yet
+}
+
+// ---------------------------------------------------------------------------
+// Complaint lifecycle
+// ---------------------------------------------------------------------------
+
 enum ComplaintStatus {
-  SUBMITTED // filed, GCCE has not run yet
-  ROUTED // department + ward resolved, nobody owns it
-  ASSIGNED // a field official owns it
-  IN_PROGRESS
-  RESOLVED // official submitted evidence
-  CLOSED // supervisor signed off
+  SUBMITTED //     filed, GCCE has not run yet
+  ROUTED //        sector + department resolved, no section officer found
+  ASSIGNED //      a section officer (JE) owns it and must triage
+  IN_PROGRESS //   a field worker is on the job
+  AWAITING_VERIFICATION // worker says done; the JE must inspect
+  RESOLVED //      JE verified the work
+  CLOSED //        signed off at circle level or above
   REJECTED
   DUPLICATE
 }
@@ -37,14 +85,17 @@ enum Priority {
 }
 
 enum RiskBand {
-  LOW // 0-39
+  LOW //      0-39
   MODERATE // 40-59
-  HIGH // 60-79
-  SEVERE // 80-100
+  HIGH //     60-79
+  SEVERE //   80-100
 }
 
 enum RiskEntityType {
-  WARD
+  SECTOR
+  CIRCLE
+  ZONE
+  DEPARTMENT
   CONTRACTOR
   PROJECT
 }
@@ -56,45 +107,95 @@ enum ReviewStatus {
   DISMISSED
 }
 
-model User {
-  id             Int      @id @default(autoincrement())
-  email          String   @unique
-  hashedPassword String
-  fullName       String
-  phone          String?
-  role           UserRole
-  isActive       Boolean  @default(true)
+// ---------------------------------------------------------------------------
+// Geography
+// ---------------------------------------------------------------------------
 
-  // Citizens get a home ward. Field officials get the ward + department they
-  // serve — GCCE assigns work on exactly that pair. Admins have neither.
-  wardId       Int?
-  departmentId Int?
-  ward         Ward?       @relation(fields: [wardId], references: [id], onDelete: SetNull)
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+model Zone {
+  id     Int     @id @default(autoincrement())
+  code   String  @unique
+  name   String
+  /// Devanagari name, shown alongside the English one.
+  nameHi String?
 
-  filedComplaints    Complaint[]              @relation("ComplaintCitizen")
-  assignedComplaints Complaint[]              @relation("ComplaintAssignee")
-  statusUpdates      ComplaintStatusHistory[]
-  notifications      Notification[]
-  auditEvents        AuditEvent[]
-  reviewedFlags      RiskFlag[]
-  inspections        Inspection[]
+  circles   Circle[]
+  postings  Posting[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("zones")
+}
+
+/// A work circle — the division an Executive Engineer runs.
+model Circle {
+  id     Int    @id @default(autoincrement())
+  code   String @unique
+  name   String
+  zoneId Int
+
+  zone      Zone      @relation(fields: [zoneId], references: [id])
+  sectors   Sector[]
+  postings  Posting[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([zoneId])
+  @@map("circles")
+}
+
+/// A Noida sector — the ground unit a Junior Engineer is responsible for.
+model Sector {
+  id       Int    @id @default(autoincrement())
+  /// The number residents actually use, e.g. 62 in "Sector 62".
+  number   Int    @unique
+  name     String
+  circleId Int
+
+  population  Int?
+  /// Sector centroid. GCCE routes to the nearest one when a complaint carries
+  /// coordinates that fall outside every stored boundary.
+  centroidLat Float?
+  centroidLon Float?
+
+  circle     Circle      @relation(fields: [circleId], references: [id])
+  residents  User[]
+  complaints Complaint[]
+  postings   Posting[]
+  projects   Project[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([role, wardId, departmentId])
-  @@map("users")
+  @@index([circleId])
+  @@map("sectors")
 }
+
+// ---------------------------------------------------------------------------
+// Organisation
+// ---------------------------------------------------------------------------
 
 model Department {
   id          Int     @id @default(autoincrement())
   code        String  @unique
   name        String
+  /// Devanagari name — these departments are known by their Hindi names locally.
+  nameHi      String?
   description String?
+  /// Emoji used across the UI so departments are recognisable at a glance.
+  icon        String  @default("🏛️")
+
+  status      DepartmentStatus @default(COMING_SOON)
+  /// Shown on a coming-soon department's card.
+  roadmapNote String?
+  /// Display order in listings.
+  sortOrder   Int              @default(100)
+
+  /// Designation titles differ by department — a Junior Engineer in Civil is a
+  /// Sanitary Inspector in Public Health. Keyed by Rank.
+  designations Designation[]
 
   categories ComplaintCategory[]
-  officials  User[]
+  postings   Posting[]
   complaints Complaint[]
   projects   Project[]
 
@@ -104,40 +205,124 @@ model Department {
   @@map("departments")
 }
 
-model Ward {
-  id         Int     @id @default(autoincrement())
-  wardNumber Int     @unique
-  name       String
-  zone       String?
-  population Int?
+/// The real-world job title for a rank inside one department.
+model Designation {
+  id           Int     @id @default(autoincrement())
+  departmentId Int
+  rank         Rank
+  /// e.g. "Junior Engineer (Civil)" or "Sanitary Inspector"
+  title        String
+  titleHi      String?
+  /// e.g. "JE", "EE", "SI"
+  shortTitle   String?
 
-  // Ward centroid. GCCE routes to the nearest centroid when the citizen's
-  // coordinates do not fall inside a stored boundary.
-  centroidLat Float?
-  centroidLon Float?
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
-  residents  User[]
-  complaints Complaint[]
-  projects   Project[]
+  @@unique([departmentId, rank])
+  @@map("designations")
+}
+
+/// A person's place in the organisation: which department, at what rank, over
+/// which patch of the city.
+///
+/// This is the scaling primitive. Adding a department, a zone or a whole new
+/// tier of staff is data, not code — and one person can hold more than one
+/// posting (an EE covering a vacant neighbouring circle, say).
+model Posting {
+  id           Int               @id @default(autoincrement())
+  userId       Int
+  departmentId Int?
+  rank         Rank
+  level        JurisdictionLevel
+
+  // Exactly one of these is set, matching `level`. AUTHORITY postings set none.
+  zoneId   Int?
+  circleId Int?
+  sectorId Int?
+
+  /// Snapshot of the designation title, so historical records keep reading
+  /// correctly even if the department later renames the post.
+  designationTitle String?
+
+  /// A field worker's trade. Null for officials.
+  trade        Trade?
+  /// Staff/employee number as printed on their ID card.
+  employeeCode String? @unique
+
+  isPrimary Boolean   @default(true)
+  startedAt DateTime  @default(now())
+  /// Set when someone is transferred out. Ended postings keep their history but
+  /// stop receiving work.
+  endedAt   DateTime?
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  zone       Zone?       @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  circle     Circle?     @relation(fields: [circleId], references: [id], onDelete: SetNull)
+  sector     Sector?     @relation(fields: [sectorId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("wards")
+  @@index([departmentId, rank, sectorId])
+  @@index([departmentId, rank, circleId])
+  @@index([userId, endedAt])
+  @@map("postings")
+}
+
+model User {
+  id             Int     @id @default(autoincrement())
+  email          String  @unique
+  hashedPassword String
+  fullName       String
+  fullNameHi     String?
+  phone          String?
+
+  /// Denormalised from the primary posting so auth and lists do not need a join.
+  /// `postings` remains the source of truth.
+  rank     Rank    @default(CITIZEN)
+  isActive Boolean @default(true)
+
+  /// Where a citizen lives. Officials get their patch from their posting.
+  homeSectorId Int?
+
+  postings Posting[]
+
+  filedComplaints  Complaint[]              @relation("ComplaintCitizen")
+  ownedComplaints  Complaint[]              @relation("ComplaintOfficer")
+  workerComplaints Complaint[]              @relation("ComplaintWorker")
+  statusUpdates    ComplaintStatusHistory[]
+  escalationsTo    Escalation[]             @relation("EscalatedTo")
+  notifications    Notification[]
+  auditEvents      AuditEvent[]
+  reviewedFlags    RiskFlag[]
+  inspections      Inspection[]
+
+  homeSector Sector? @relation(fields: [homeSectorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([rank, isActive])
+  @@map("users")
 }
 
 model ComplaintCategory {
-  id           Int    @id @default(autoincrement())
-  code         String @unique
+  id           Int     @id @default(autoincrement())
+  code         String  @unique
   name         String
+  nameHi       String?
   departmentId Int
 
   /// Hours from routing to the SLA deadline GCCE stamps on the complaint.
-  defaultSlaHours Int    @default(72)
+  defaultSlaHours Int     @default(72)
   /// Comma-separated hints for GCCE's keyword classifier, including Hinglish.
-  keywords        String @default("")
-  /// Emoji shown in the UI so a citizen can pick a category at a glance.
-  icon            String @default("📋")
+  keywords        String  @default("")
+  icon            String  @default("📋")
+  /// Which trade normally does this work — narrows the JE's assignment list.
+  trade           Trade?
+  isActive        Boolean @default(true)
+  sortOrder       Int     @default(100)
 
   department Department  @relation(fields: [departmentId], references: [id])
   complaints Complaint[]
@@ -147,6 +332,10 @@ model ComplaintCategory {
 
   @@map("complaint_categories")
 }
+
+// ---------------------------------------------------------------------------
+// Complaints
+// ---------------------------------------------------------------------------
 
 model Complaint {
   id Int @id @default(autoincrement())
@@ -162,12 +351,19 @@ model Complaint {
   latitude  Float?
   longitude Float?
   address   String?
+  /// Free-text landmark, since Noida addresses are usually given as one.
+  landmark  String?
 
-  // Everything below is set by GCCE at routing time, not by the citizen.
+  // Set by GCCE at routing time, not by the citizen.
   categoryId   Int?
   departmentId Int?
-  wardId       Int?
-  assignedToId Int?
+  sectorId     Int?
+
+  /// The Section Officer (JE) accountable for this complaint. GCCE assigns
+  /// here — never straight to a worker, because triage is the JE's job.
+  assignedOfficerId Int?
+  /// The field worker the JE put on the job.
+  assignedWorkerId  Int?
 
   status   ComplaintStatus @default(SUBMITTED)
   priority Priority        @default(MEDIUM)
@@ -176,29 +372,34 @@ model Complaint {
   resolvedAt DateTime?
   closedAt   DateTime?
 
-  /// Set when GCCE or a supervisor marks this a repeat of an earlier report.
+  /// How many times this has been escalated up the chain.
+  escalationLevel Int @default(0)
+
   duplicateOfId Int?
 
-  /// Citizen satisfaction, 1-5, captured after closure.
   feedbackRating  Int?
   feedbackComment String?
 
-  citizen     User               @relation("ComplaintCitizen", fields: [citizenId], references: [id])
-  assignedTo  User?              @relation("ComplaintAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  category    ComplaintCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  department  Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  ward        Ward?              @relation(fields: [wardId], references: [id], onDelete: SetNull)
-  duplicateOf Complaint?         @relation("Duplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
-  duplicates  Complaint[]        @relation("Duplicates")
+  citizen         User               @relation("ComplaintCitizen", fields: [citizenId], references: [id])
+  assignedOfficer User?              @relation("ComplaintOfficer", fields: [assignedOfficerId], references: [id], onDelete: SetNull)
+  assignedWorker  User?              @relation("ComplaintWorker", fields: [assignedWorkerId], references: [id], onDelete: SetNull)
+  category        ComplaintCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  department      Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  sector          Sector?            @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  duplicateOf     Complaint?         @relation("Duplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates      Complaint[]        @relation("Duplicates")
 
-  history ComplaintStatusHistory[]
+  history     ComplaintStatusHistory[]
+  escalations Escalation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([status, wardId])
+  @@index([status, sectorId])
   @@index([citizenId])
-  @@index([assignedToId, status])
+  @@index([assignedOfficerId, status])
+  @@index([assignedWorkerId, status])
+  @@index([departmentId, status])
   @@map("complaints")
 }
 
@@ -219,6 +420,39 @@ model ComplaintStatusHistory {
   @@index([complaintId])
   @@map("complaint_status_history")
 }
+
+/// A complaint that breached its deadline and was pushed up the chain.
+///
+/// Escalation is the mechanism that makes a hierarchy accountable rather than
+/// decorative: an unresolved complaint becomes the next officer's problem.
+model Escalation {
+  id          Int @id @default(autoincrement())
+  complaintId Int
+
+  fromRank Rank
+  toRank   Rank
+  /// The officer it landed on. Null when no one holds that post yet.
+  toUserId Int?
+
+  reason       String
+  /// How many hours past the SLA deadline it was when this fired.
+  hoursOverdue Int
+
+  acknowledgedAt DateTime?
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  toUser    User?     @relation("EscalatedTo", fields: [toUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([complaintId])
+  @@index([toUserId, acknowledgedAt])
+  @@map("escalations")
+}
+
+// ---------------------------------------------------------------------------
+// Works and contracts
+// ---------------------------------------------------------------------------
 
 model Contractor {
   id             Int     @id @default(autoincrement())
@@ -244,7 +478,7 @@ model Project {
 
   contractorId Int?
   departmentId Int?
-  wardId       Int?
+  sectorId     Int?
 
   // Money is Decimal, never Float — GRIE divides these and the paper reports
   // the results.
@@ -260,7 +494,7 @@ model Project {
 
   contractor  Contractor?  @relation(fields: [contractorId], references: [id], onDelete: SetNull)
   department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  ward        Ward?        @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  sector      Sector?      @relation(fields: [sectorId], references: [id], onDelete: SetNull)
   inspections Inspection[]
 
   createdAt DateTime @default(now())
@@ -290,6 +524,10 @@ model Inspection {
   @@map("inspections")
 }
 
+// ---------------------------------------------------------------------------
+// GRIE
+// ---------------------------------------------------------------------------
+
 /// One GRIE score for one entity at one point in time.
 ///
 /// Append-only: recomputing writes a new row rather than updating, so a score's
@@ -302,12 +540,9 @@ model RiskScore {
   score Float
   band  RiskBand
 
-  /// The whole point of GRIE. Shape:
   /// [{ factor, label, raw, normalised, weight, contribution, explanation }]
   factors Json
 
-  /// Which weight set produced this score, so results stay reproducible after
-  /// the weights are tuned.
   modelVersion String @default("v1-weighted")
 
   flags RiskFlag[]
@@ -318,13 +553,11 @@ model RiskScore {
   @@map("risk_scores")
 }
 
-/// A score that crossed the review threshold and needs a human decision.
 model RiskFlag {
   id          Int            @id @default(autoincrement())
   riskScoreId Int
   entityType  RiskEntityType
   entityId    Int
-  /// Denormalised so the queue reads without a join back to the entity.
   entityLabel String
 
   score  Float
@@ -346,15 +579,18 @@ model RiskFlag {
   @@map("risk_flags")
 }
 
+// ---------------------------------------------------------------------------
+// Platform
+// ---------------------------------------------------------------------------
+
 model Notification {
-  id     Int    @id @default(autoincrement())
-  userId Int
-  title  String
-  body   String
-  /// Deep link into the app, e.g. /complaints/42
-  link   String?
+  id      Int     @id @default(autoincrement())
+  userId  Int
+  title   String
+  body    String
+  link    String?
   /// in_app | email | sms
-  channel String @default("in_app")
+  channel String  @default("in_app")
 
   isRead Boolean   @default(false)
   sentAt DateTime?
@@ -370,13 +606,11 @@ model Notification {
 /// Tamper-evident audit trail.
 ///
 /// Each row's hash covers its own content plus the previous row's hash, so
-/// editing or deleting any historical row breaks every hash after it. Same
-/// integrity guarantee the plan wanted from blockchain, without the ledger.
+/// editing or deleting any historical row breaks every hash after it.
 model AuditEvent {
   id Int @id @default(autoincrement())
 
-  actorId Int?
-  /// Denormalised so the trail stays readable if the user row is removed.
+  actorId    Int?
   actorLabel String?
 
   action     String
@@ -384,7 +618,7 @@ model AuditEvent {
   entityId   String
 
   payload Json
-  /// Which engine wrote this: gcce | grie | api | system
+  /// gcce | grie | api | system
   source  String @default("api")
 
   prevHash String?

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api, tokenStore } from '../lib/api'
-import type { User, UserRole } from '../lib/types'
+import type { Rank, User } from '../lib/types'
 
 interface AuthState {
   user: User | null
@@ -17,10 +17,10 @@ interface AuthState {
     password: string
     fullName: string
     phone?: string
-    wardId?: number | null
+    homeSectorId?: number | null
   }) => Promise<User>
   logout: () => void
-  hasRole: (...roles: UserRole[]) => boolean
+  hasRank: (...ranks: Rank[]) => boolean
 }
 
 const AuthContext = createContext<AuthState | null>(null)
@@ -72,14 +72,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
-  const hasRole = useCallback(
-    (...roles: UserRole[]) => (user ? roles.includes(user.role) : false),
+  const hasRank = useCallback(
+    (...ranks: Rank[]) => (user ? ranks.includes(user.rank) : false),
     [user],
   )
 
   const value = useMemo(
-    () => ({ user, loading, login, register, logout, hasRole }),
-    [user, loading, login, register, logout, hasRole],
+    () => ({ user, loading, login, register, logout, hasRank }),
+    [user, loading, login, register, logout, hasRank],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

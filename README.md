@@ -1,11 +1,13 @@
 # DRISHTI-G
 
-A governance platform for a municipal corporation, built around two engines:
+A governance platform for **NOIDA Authority**, built around two engines:
 
-- **GCCE** — *Governance Capability Coordination Engine.* Every state-changing action routes through it. It decides who is responsible, triggers whatever else must happen, and records its reasoning. Deterministic by design.
-- **GRIE** — *Governance Risk Intelligence Engine.* Scores wards, contractors and projects 0–100 from real signals, and always shows **why** — per-factor contributions that add up to the score, never a black-box number.
+- **GCCE** — *Governance Capability Coordination Engine.* Routes every complaint to the officer actually responsible for that sector, records why, and escalates it up the chain when a deadline is missed.
+- **GRIE** — *Governance Risk Intelligence Engine.* Scores sectors, circles, zones, departments, contractors and projects 0–100, and always shows **why** — per-factor contributions that add up to the score, never a black-box number.
 
-**Status: the complaint lifecycle works end to end.** A citizen files an issue, GCCE routes it, a field official works it and submits evidence, a supervisor signs it off, and GRIE re-scores the ward from the result.
+> **A note on the city.** Noida has no municipal corporation. It is administered by **NOIDA — the New Okhla Industrial Development Authority**, a UP state development authority, and its geography is *sectors* grouped into *work circles* grouped into *zones*. The data model follows the real thing.
+
+**Status: the full chain of command works end to end**, from a citizen filing in Hinglish to a Beldar submitting a photograph to an Executive Engineer signing it off.
 
 ---
 
@@ -42,144 +44,181 @@ cd frontend && npm install && npm run dev
 
 ### Demo accounts
 
-All use the password `drishti123`. The login screen has one-click buttons for these.
+All use the password `drishti123`. The login screen has one-click buttons.
 
-| Email | Role | What to look at |
+| Email | Rank | What to look at |
 |---|---|---|
-| `admin@drishti.gov.in` | Supervisor | Dashboard, risk queue with full reasoning, audit trail |
-| `swm.ward5@drishti.gov.in` | Field Official | Task inbox for the deliberately-overloaded ward |
-| `citizen@example.com` | Citizen | File a complaint and watch GCCE route it live |
+| `admin@drishti.gov.in` | Super Admin | Org chart, departments, people, audit trail |
+| `ceo@noidaauthority.in` | CEO | Authority-wide oversight |
+| `gm.civil@noidaauthority.in` | General Manager | One department, all zones |
+| `ee.wc5.civil@noidaauthority.in` | Executive Engineer | Work Circle 5 — escalations land here |
+| `je.s5.civil@noidaauthority.in` | Junior Engineer | Sector 5 desk — allot work to your crew |
+| `worker1.s5.civil@noidaauthority.in` | Beldar | The field worker's phone view |
+| `citizen@example.com` | Citizen | Report an issue and track it |
 
 ---
 
-## The five-minute demo
+## The chain of command
 
-1. **Sign in as the citizen.** File a complaint — try writing it in Hinglish, e.g. *"Gali ki batti kharab hai, poora andhera rehta hai."* Leave the category blank.
-2. **Watch GCCE work.** The confirmation screen shows exactly what it decided and why: which category it matched and on how many keywords, which department owns it, which ward the coordinates fall in, what priority it assigned and why, and which official got the task.
-3. **Sign in as `elec.ward1@drishti.gov.in`.** The complaint is already in their inbox, sorted by deadline. Start work, then resolve it with a photo — the API refuses to accept a resolution without evidence.
-4. **Sign in as the supervisor.** Open the **Risk queue**, and click *"Why was this flagged?"* on Ward 5. Every factor is listed with its raw measurement, how it was scaled, its weight, and its contribution — and the contributions reconcile to the score.
-5. **Open the Audit trail** and click *Verify chain*. Every entry carries a fingerprint of the one before it.
+```
+                    CEO  ·  Super Admin              authority-wide
+                          │
+             General Manager / Chief Engineer        one department
+                          │
+        Superintending Engineer / Chief Sanitary Officer    zone
+                          │
+          Executive Engineer / Sanitary Officer      work circle
+                          │
+        Junior Engineer / Sanitary Inspector         sector   ← triage
+                          │
+      Safai Karamchari · Lineman · Beldar            sector   ← the work
+```
+
+Designations differ by department — a Junior Engineer in Civil is a **Sanitary Inspector** in Public Health — and the org chart shows each department's real titles.
+
+### Geography
+
+```
+Zone I — Central Noida    Work Circles 1–2    Sectors 12, 15, 22, 18, 27, 29
+Zone II — Expressway      Work Circles 3–4    Sectors 62, 63, 71, 128, 137, 168
+Zone III — Old Noida      Work Circles 5–6    Sectors 1, 5, 8, 9, 10, 11
+```
+
+### The scaling primitive
+
+Everything hangs off a **Posting** — one row joining *person × department × rank × jurisdiction*. Adding a department, a zone, or a whole tier of staff is data, not code. One person can hold several postings (an Executive Engineer covering a vacant neighbouring circle), and a transfer ends the old posting rather than editing it, so the record of who held which charge and when survives.
+
+---
+
+## The ten-minute demo
+
+1. **Citizen** — sign in as `citizen@example.com` and report an issue. Try Hinglish: *"Gali ki batti kharab hai, poora andhera rehta hai."* Leave the category blank.
+
+   GCCE shows its working: which keywords matched, which department owns it, which sector the coordinates fall in, the priority and why, and **which Junior Engineer it landed on**.
+
+2. **Junior Engineer** — sign in as `je.s5.civil@noidaauthority.in`. The complaint is on their desk marked *needs a crew*. Click **Allot to crew**: only Beldars posted to Sector 5 appear, sorted by current workload, because the category calls for that trade.
+
+3. **Field worker** — sign in as `worker1.s5.civil@noidaauthority.in`. Big buttons, plain language, a directions link. Try **Work finished** without a photo: it refuses. This app has no resolve, close or reassign — a worker genuinely cannot do those.
+
+4. **Back to the JE** → **To inspect**. Accept the work, or send it back to the crew with a reason. Nothing counts as resolved until a human has looked at it.
+
+5. **Executive Engineer** — sign in as `ee.wc5.civil@noidaauthority.in` → **Escalated to me**. Complaints that blew their deadline are now *their* problem, each with the reason and hours overdue. Only Circle Officer and above can close a complaint, so a JE cannot sign off their own section's work.
+
+6. **Super Admin** — `admin@drishti.gov.in` → **Risk queue**, then *"Why was this flagged?"* on Sector 5. Every factor with its measurement, weight, contribution, and a total that reconciles. Then **Org chart** and **Map**.
 
 ---
 
 ## Architecture
 
 ```
-frontend/            React 18 + TypeScript + Tailwind + Vite
+frontend/            React 18 + TypeScript + Tailwind + Vite + Leaflet
   src/
-    components/      AppShell, RiskExplanation, Timeline, ComplaintCard, ui primitives
-    context/         AuthContext — session restore, login, role checks
-    lib/             api client (single-flight token refresh), types, formatters
+    components/      AppShell (rank-aware nav), RiskExplanation, Timeline, ui primitives
+    context/         AuthContext — session restore, login, rank checks
+    lib/             api client (single-flight refresh), types, formatters
     pages/           Login, Register, CitizenHome, NewComplaint, ComplaintDetail,
-                     TaskInbox, AdminDashboard, RiskQueue, WardRisk, AllComplaints,
-                     Users, AuditTrail
+                     OfficerDesk, WorkerJobs, Oversight, Escalations, RiskQueue,
+                     SectorRisk, ComplaintMap, OrgChart, Departments, People, AuditTrail
 
 backend/             Node 22 + TypeScript + Express + Prisma
   prisma/
-    schema.prisma    13 models
-    seed.ts          demo city with generated history
+    schema.prisma    18 models, 8 ranks, 3 geographic tiers
+    seed.ts          the whole authority, with generated complaint history
   src/
     config/          env validation (fails fast on bad config)
-    lib/             prisma client, neo4j driver, auth primitives, logger
-    middleware/      authenticate, requireRole, zod validation, uploads, errors
-    routes/          auth, complaints, tasks, risk, org, notifications, admin, system
-    services/        gcce.ts, grie.ts, riskSignals.ts, audit.ts, graphSync.ts
+    lib/             prisma, neo4j, auth primitives, logger
+    middleware/      authenticate, requireRank, zod validation, uploads, errors
+    routes/          auth, complaints, officer, worker, risk, org, admin, notifications
+    services/        hierarchy.ts, gcce.ts, escalation.ts, grie.ts, riskSignals.ts,
+                     audit.ts, graphSync.ts
 ```
 
 ### Two databases, two jobs
 
-**Postgres is the system of record.** Every row lives there and it is the only source that must be correct.
-
-**Neo4j is a projection.** It exists so "who is connected to what" is a traversal rather than a join — what GCCE needs for routing and GRIE needs to propagate risk from a project to its contractor and ward. Every graph write is a `MERGE`, so it can be rebuilt at any time:
+**Postgres is the system of record.** **Neo4j is a projection** — it exists so "who covers this sector?" is a one-hop traversal rather than a join. Every graph write is a `MERGE`, so it rebuilds from Postgres at any time:
 
 ```bash
-curl -X POST http://localhost:4000/api/v1/graph/sync -H "Authorization: Bearer <admin-token>"
+curl -X POST http://localhost:4000/api/v1/graph/sync -H "Authorization: Bearer <token>"
 ```
 
-If the graph is unreachable the API still boots, every non-graph endpoint keeps working, and `/health` reports it as down.
+If the graph is unreachable the API still boots and `/health` reports it as down.
 
 ---
 
 ## How GCCE decides
 
-`backend/src/services/gcce.ts`. Three questions in a fixed order, each one recorded:
+`backend/src/services/gcce.ts`. Three questions in a fixed order, each recorded:
 
-1. **Where does this belong?** Category from keyword matching over the complaint text — word-boundary aware, and seeded with Hinglish terms (`gaddha`, `batti`, `kachra`, `nali`, `pani`, `machhar`) because that is how complaints actually arrive. Ward from the nearest centroid to the citizen's coordinates, falling back to their registered ward.
-2. **Who is accountable?** The least-loaded active official serving that department *and* ward, counting open assignments so work spreads. Ties break on id, which is what makes routing reproducible. Priority escalates when a ward already has 30+ open complaints.
-3. **What else must happen?** Notify the citizen and the assignee, queue a GRIE re-score for the ward, project the complaint into the graph.
+1. **Where does this belong?** Category from word-boundary keyword matching, seeded with Hinglish (`gaddha`, `batti`, `kachra`, `nali`, `machhar`). Sector from the nearest centroid, falling back to the citizen's registered sector. Categories belonging to a coming-soon department are excluded, so a complaint is never captured by a wing that cannot act on it.
+2. **Who is accountable?** The **Section Officer** for that sector — never a worker directly, because triage is the JE's job. If that post is vacant it falls up to the Circle Officer rather than leaving the complaint unowned.
+3. **What else must happen?** Notify the citizen and the officer, queue a GRIE re-score, project into the graph.
 
-It is deliberately deterministic. The plan rules out autonomous multi-step agents, and coordination is exactly where unpredictability would cost most — the same complaint must always route the same way, and a supervisor must be able to explain why it did.
+Deterministic by design: ties break on id, so the same complaint always routes the same way and an officer can always explain why it reached them.
 
-Status transitions are a state machine in `ALLOWED_TRANSITIONS`, checked server-side. A task cannot jump from assigned straight to closed, and resolving requires an evidence photo.
+### Escalation
+
+`backend/src/services/escalation.ts`. A complaint past its deadline becomes the next officer's problem — JE → EE → SE → GM — each step notified and audited. The ladder stops at General Manager: routing routine potholes to the CEO would make the CEO's queue meaningless, which is how escalation dies in practice.
+
+Delays widen at each step (0h, 48h, 120h): the first escalation is quick because the JE may simply have missed it; later ones are slower so senior queues stay readable.
 
 ## How GRIE scores
 
-`backend/src/services/grie.ts` holds the model; `riskSignals.ts` collects the inputs from live data. The split is deliberate — the scoring maths is testable without a database.
+`grie.ts` holds the model, `riskSignals.ts` collects the inputs. The split keeps the maths testable without a database.
 
 | Entity | Factors (weights sum to 1.0) |
 |---|---|
-| **Ward** | repeat complaints (0.35), missed deadlines (0.30), open load (0.20), resolution speed (0.15) |
+| **Sector / Circle / Zone / Department** | missed deadlines (0.28), repeat complaints (0.27), **escalations (0.20)**, open load (0.15), resolution speed (0.10) |
 | **Project** | budget overrun (0.30), schedule delay (0.25), inspection failures (0.25), linked complaints (0.20) |
 | **Contractor** | average project risk (0.40), late delivery (0.30), inspection failures (0.20), blacklisting (0.10) |
 
-Anything scoring **60 or above** raises a flag for human review. An entity that recovers has its flag closed automatically rather than leaving a stale warning in the queue.
+Geographic scopes share one factor set — a circle is the same thing as a sector at a wider magnification — so their scores are directly comparable. Only the **load cap** changes with scope (`LOAD_CAP`): a sector is saturated at 25 open complaints, a zone is not.
 
-Scores are **append-only** — recomputing writes a new row, so history is inspectable and the paper's experiments can replay it.
+Anything scoring **60+** raises a flag. An entity that recovers has its flag cleared automatically rather than leaving a stale warning. Scores are **append-only**, so history can be replayed.
 
 ### A note on the research design
 
-The v1 scorer is a transparent weighted sum, and that is the point. The paper asks whether an interpretable risk score costs accuracy against a black box — so the interpretable model is the **treatment**, not a placeholder. The comparison model is the *control* and gets built later, alongside the experiment harness.
-
-The weights are the tunable part. They sum to 1.0 per entity type; if they drift, a maximum-risk entity stops scoring 100 and the bands stop meaning what they claim.
+The v1 scorer is a transparent weighted sum, and that is the point. The paper asks whether an interpretable score costs accuracy against a black box — the interpretable model is the **treatment**, not a placeholder. The comparison model is the *control*, built later with the experiment harness.
 
 ## The audit trail
 
-`backend/src/services/audit.ts`. Every entry stores a SHA-256 hash over its own canonical content **plus the previous entry's hash**. Editing or deleting any historical row breaks every hash after it.
-
-Audit writes happen inside the same transaction as the action they record — so an action and its audit entry either both land or neither does, and reading the head hash inside that transaction keeps the chain linear under concurrent writes.
-
-Verify from the UI (**Audit trail → Verify chain**) or directly:
+Every entry stores a SHA-256 hash over its own content **plus the previous entry's hash**, written inside the same transaction as the action it records. Verify from **Audit trail → Verify chain**, or:
 
 ```bash
-curl http://localhost:4000/api/v1/admin/audit/verify -H "Authorization: Bearer <admin-token>"
+curl http://localhost:4000/api/v1/admin/audit/verify -H "Authorization: Bearer <token>"
 ```
-
-This is the guarantee the project plan wanted from blockchain, without the ledger.
 
 ---
 
-## Roles
+## Departments
 
-| Role | Created by | Can do |
-|---|---|---|
-| `CITIZEN` | Public registration | File complaints, track them, leave feedback |
-| `FIELD_OFFICIAL` | Supervisor only | Work assigned tasks, submit evidence |
-| `ADMIN` | Supervisor only (first via seed) | Everything, plus the risk queue and audit trail |
+Three are live and staffed to sector level; five are listed with a roadmap note so nobody has to guess whether the authority handles it.
 
-Public registration **always** produces a citizen — passing `"role": "ADMIN"` to `/auth/register` is ignored. Officials require both a ward and a department, because GCCE assigns by that pair and an official missing either would never receive a task.
+| Live | Coming soon |
+|---|---|
+| 🧹 Public Health (जन स्वास्थ्य) | 🚰 Water & Sewerage |
+| 💡 Electrical & Mechanical (विद्युत एवं यांत्रिक) | 🌳 Horticulture |
+| 🛣️ Civil Engineering (सिविल अभियंत्रण) | 📐 Planning & Architecture |
+| | 📜 Land & Property |
+| | 🚦 Traffic & Transport Cell |
+
+The Super Admin can take one live from **Departments** — but the API refuses to activate a department with no Section Officer posted, because its complaints would route to nobody.
 
 ---
 
 ## Seed data
 
-The seeded city is deliberately uneven so the dashboards show something real. **Ward 5 (Old City)** is the problem ward: 26 complaints, a 30% resolution rate and a 70% late rate. **Satpura Civil Works** is blacklisted and runs the **Old City Drainage Upgrade**, which is 45% over budget and 140 days late.
+Deliberately uneven so the dashboards show something real. **Sector 5 (Harola)** — a dense older settlement in Work Circle 5 — is the problem area: a 28% resolution rate, 78% of complaints late. **Okhla Civil Works** is blacklisted and ran the **Harola Drainage Upgrade**, 45% over budget and 140 days late.
 
-GRIE finds all three on its own, from the data alone:
+GRIE finds the whole cluster on its own, and the connection between them is the project's thesis: a bad sector, the circle containing it, the project there, and the contractor who ran it.
 
-```
-SEVERE   89.08  Satpura Civil Works        — their projects average a risk score of 85/100
-SEVERE   85.19  Old City Drainage Upgrade  — spending is 45% over the allocated budget
-HIGH     62.33  Ward 5 — Old City          — 92% of complaints missed their resolution deadline
-```
-
-The generator uses a fixed PRNG seed, so every teammate's database looks identical.
+The generator uses a fixed PRNG seed, so every teammate's database is identical. How *fresh* a sector's complaints are follows from how well it is run — a sector that closes work keeps only recent complaints in hand, a neglected one accumulates a backlog.
 
 ---
 
 ## What is next
 
-1. **Leaflet map view** — the coordinates and ward centroids are already stored; this is a rendering layer
-2. **Email notifications** — notifications are persisted first, so a sender only needs to drain unsent rows
-3. **Hindi/Hinglish auto-categorisation** (MuRIL / IndicBERT) — GCCE's keyword matcher is the fallback it will sit in front of
-4. **The research harness** — dataset generator, the scikit-learn control model, and the experiment runner
+1. **Email notifications** — already persisted first, so a sender only drains unsent rows
+2. **Hindi/Hinglish auto-categorisation** (MuRIL / IndicBERT) — GCCE's keyword matcher is the fallback it will sit in front of
+3. **The research harness** — dataset generator, the scikit-learn control model, the experiment runner
+4. **Scheduled escalation** — the sweep exists and is exposed as an endpoint; it needs a cron
 5. **Duplicate detection** and the public transparency page

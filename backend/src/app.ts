@@ -10,9 +10,10 @@ import { authRouter } from './routes/auth.js'
 import { complaintsRouter } from './routes/complaints.js'
 import { notificationsRouter } from './routes/notifications.js'
 import { orgRouter } from './routes/org.js'
+import { officerRouter } from './routes/officer.js'
 import { riskRouter } from './routes/risk.js'
 import { systemRouter } from './routes/system.js'
-import { tasksRouter } from './routes/tasks.js'
+import { workerRouter } from './routes/worker.js'
 
 export function createApp(): Express {
   const app = express()
@@ -36,7 +37,8 @@ export function createApp(): Express {
   app.use(`${api}/auth`, authRouter)
   app.use(api, orgRouter)
   app.use(`${api}/complaints`, complaintsRouter)
-  app.use(`${api}/tasks`, tasksRouter)
+  app.use(`${api}/officer`, officerRouter)
+  app.use(`${api}/worker`, workerRouter)
   app.use(`${api}/risk`, riskRouter)
   app.use(`${api}/notifications`, notificationsRouter)
   app.use(`${api}/admin`, adminRouter)

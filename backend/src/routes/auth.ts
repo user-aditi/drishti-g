@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { UserRole } from '@prisma/client'
+import { Rank } from '@prisma/client'
 import { z } from 'zod'
 import { hashPassword, signToken, verifyPassword, verifyToken } from '../lib/auth.js'
 import { prisma } from '../lib/prisma.js'
@@ -16,7 +16,7 @@ const registerSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
   fullName: z.string().min(2, 'Enter your full name').max(128),
   phone: z.string().max(20).optional(),
-  wardId: z.number().int().positive().nullable().optional(),
+  homeSectorId: z.number().int().positive().nullable().optional(),
 })
 
 const loginSchema = z.object({
@@ -24,9 +24,17 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Enter your password'),
 })
 
-function tokensFor(user: { id: number; role: UserRole }) {
+const USER_INCLUDE = {
+  homeSector: true,
+  postings: {
+    where: { endedAt: null },
+    include: { department: true, zone: true, circle: true, sector: true },
+  },
+} as const
+
+function tokensFor(user: { id: number; rank: Rank }) {
   return {
-    accessToken: signToken(user.id, 'access', user.role),
+    accessToken: signToken(user.id, 'access', user.rank),
     refreshToken: signToken(user.id, 'refresh'),
   }
 }
@@ -53,19 +61,19 @@ authRouter.post(
           hashedPassword: await hashPassword(body.password),
           fullName: body.fullName,
           phone: body.phone ?? null,
-          role: UserRole.CITIZEN,
-          wardId: body.wardId ?? null,
+          rank: Rank.CITIZEN,
+          homeSectorId: body.homeSectorId ?? null,
         },
       })
       await audit.record(tx, {
         action: 'user.registered',
         entityType: 'user',
         entityId: created.id,
-        payload: { email: created.email, role: created.role },
+        payload: { email: created.email, rank: created.rank },
         actorId: created.id,
         actorLabel: created.fullName,
       })
-      return created
+      return tx.user.findUniqueOrThrow({ where: { id: created.id }, include: USER_INCLUDE })
     })
 
     res.status(201).json({ ...tokensFor(user), user: publicUser(user) })
@@ -78,7 +86,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const { email, password } = req.body as z.infer<typeof loginSchema>
 
-    const user = await prisma.user.findUnique({ where: { email } })
+    const user = await prisma.user.findUnique({ where: { email }, include: USER_INCLUDE })
     // One message for both "no such user" and "wrong password", so this endpoint
     // cannot be used to discover which emails are registered.
     if (!user || !(await verifyPassword(password, user.hashedPassword))) {
@@ -119,7 +127,7 @@ authRouter.post(
       throw unauthorized('Your session has expired — please sign in again')
     }
 
-    res.json({ accessToken: signToken(user.id, 'access', user.role) })
+    res.json({ accessToken: signToken(user.id, 'access', user.rank) })
   }),
 )
 
@@ -129,7 +137,7 @@ authRouter.get(
   asyncHandler(async (req, res) => {
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: req.user!.id },
-      include: { ward: true, department: true },
+      include: USER_INCLUDE,
     })
     res.json(publicUser(user))
   }),

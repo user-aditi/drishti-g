@@ -12,7 +12,7 @@ import {
   Spinner,
   StatusPill,
 } from '../components/ui'
-import { deadlineLabel, formatDateTime, isOpen } from '../lib/format'
+import { deadlineLabel, formatDateTime, isOpen, isSeniorOfficer } from '../lib/format'
 import type { ComplaintDetail as Detail } from '../lib/types'
 
 function FeedbackForm({ complaintId, onDone }: { complaintId: number; onDone: () => void }) {
@@ -248,22 +248,34 @@ export default function ComplaintDetail() {
                 </dd>
               </div>
               <div>
-                <dt className="text-slate-500">Ward</dt>
+                <dt className="text-slate-500">Sector</dt>
                 <dd className="mt-0.5 font-medium text-slate-900">
-                  {complaint.ward
-                    ? `Ward ${complaint.ward.wardNumber} — ${complaint.ward.name}`
-                    : '—'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-slate-500">Handled by</dt>
-                <dd className="mt-0.5 font-medium text-slate-900">
-                  {complaint.assignedTo?.fullName ?? (
-                    <span className="text-amber-600">Awaiting assignment</span>
+                  {complaint.sector ? `Sector ${complaint.sector.number}` : '—'}
+                  {complaint.sector?.circle && (
+                    <span className="block text-xs font-normal text-slate-500">
+                      {complaint.sector.circle.name}
+                      {complaint.sector.circle.zone && ` · ${complaint.sector.circle.zone.name}`}
+                    </span>
                   )}
                 </dd>
               </div>
-              {user?.role === 'ADMIN' && complaint.citizen && (
+              <div>
+                <dt className="text-slate-500">Officer responsible</dt>
+                <dd className="mt-0.5 font-medium text-slate-900">
+                  {complaint.assignedOfficer?.fullName ?? (
+                    <span className="text-amber-600">Awaiting posting</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Crew on the job</dt>
+                <dd className="mt-0.5 font-medium text-slate-900">
+                  {complaint.assignedWorker?.fullName ?? (
+                    <span className="text-slate-400">Not yet allotted</span>
+                  )}
+                </dd>
+              </div>
+              {isSeniorOfficer(user?.rank ?? 'CITIZEN') && complaint.citizen && (
                 <div>
                   <dt className="text-slate-500">Filed by</dt>
                   <dd className="mt-0.5 font-medium text-slate-900">
@@ -309,13 +321,13 @@ export default function ComplaintDetail() {
             </dl>
           </div>
 
-          {user?.role === 'ADMIN' && complaint.status === 'RESOLVED' && (
+          {isSeniorOfficer(user?.rank ?? 'CITIZEN') && complaint.status === 'RESOLVED' && (
             <div className="card-pad">
               <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Supervisor action
+                Sign-off
               </h2>
               <p className="mb-3 text-sm text-slate-600">
-                The work is reported done. Sign off to close this complaint.
+                The Section Officer has accepted the work. Closing is yours to authorise.
               </p>
               <button onClick={closeComplaint} className="btn-primary w-full" disabled={closing}>
                 {closing && <Spinner />}

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma.js'
 import { graphHealth } from '../lib/neo4j.js'
-import { authenticate, requireAdmin } from '../middleware/auth.js'
+import { authenticate, requireSuperAdmin } from '../middleware/auth.js'
 import { fullSync } from '../services/graphSync.js'
 import { asyncHandler } from '../utils/http.js'
 
@@ -34,7 +34,7 @@ systemRouter.get(
 systemRouter.post(
   '/graph/sync',
   authenticate,
-  requireAdmin,
+  requireSuperAdmin,
   asyncHandler(async (_req, res) => {
     res.json({ synced: await fullSync() })
   }),

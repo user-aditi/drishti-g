@@ -3,8 +3,8 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { api } from '../lib/api'
-import { ROLE_LABEL, initials, relativeTime } from '../lib/format'
-import type { Notification, UserRole } from '../lib/types'
+import { RANK_LABEL, initials, isAuthorityWide, isSeniorOfficer, relativeTime } from '../lib/format'
+import type { Notification, Rank, User } from '../lib/types'
 
 interface NavItem {
   to: string
@@ -13,26 +13,56 @@ interface NavItem {
 }
 
 /**
- * Navigation per role. The backend enforces access independently — this menu is
- * a convenience, never the access control.
+ * Navigation per rank.
+ *
+ * Built from the person's rank rather than a stored menu, so appointing someone
+ * to a new post immediately gives them the right app. The backend enforces
+ * access independently — this is a convenience, never the access control.
  */
-const NAV: Record<UserRole, NavItem[]> = {
-  CITIZEN: [
-    { to: '/', label: 'My complaints', icon: '📋' },
-    { to: '/complaints/new', label: 'File a complaint', icon: '➕' },
-  ],
-  FIELD_OFFICIAL: [
-    { to: '/', label: 'Task inbox', icon: '🧰' },
-    { to: '/tasks/done', label: 'Completed', icon: '✅' },
-  ],
-  ADMIN: [
-    { to: '/', label: 'Dashboard', icon: '📊' },
+function navFor(user: User): NavItem[] {
+  const rank: Rank = user.rank
+
+  if (rank === 'CITIZEN') {
+    return [
+      { to: '/', label: 'My complaints', icon: '📋' },
+      { to: '/complaints/new', label: 'Report an issue', icon: '➕' },
+      { to: '/departments', label: 'Departments', icon: '🏛️' },
+    ]
+  }
+
+  if (rank === 'FIELD_WORKER') {
+    return [
+      { to: '/', label: 'My jobs', icon: '🧰' },
+      { to: '/jobs/done', label: 'Completed', icon: '✅' },
+    ]
+  }
+
+  if (rank === 'SECTION_OFFICER') {
+    return [
+      { to: '/', label: 'My desk', icon: '🗂️' },
+      { to: '/desk/inspect', label: 'To inspect', icon: '🔍' },
+      { to: '/map', label: 'Sector map', icon: '🗺️' },
+      { to: '/desk/done', label: 'Completed', icon: '✅' },
+    ]
+  }
+
+  // Circle Officer and above get oversight rather than a personal desk.
+  const items: NavItem[] = [
+    { to: '/', label: 'Overview', icon: '📊' },
+    { to: '/escalations', label: 'Escalated to me', icon: '⬆️' },
+    { to: '/complaints', label: 'Complaints', icon: '📋' },
+    { to: '/map', label: 'Map', icon: '🗺️' },
     { to: '/risk', label: 'Risk queue', icon: '🎯' },
-    { to: '/wards', label: 'Ward risk', icon: '🗺️' },
-    { to: '/complaints', label: 'All complaints', icon: '📋' },
-    { to: '/users', label: 'People', icon: '👥' },
-    { to: '/audit', label: 'Audit trail', icon: '🔒' },
-  ],
+    { to: '/sectors', label: 'Sector risk', icon: '📍' },
+  ]
+
+  if (isSeniorOfficer(rank)) items.push({ to: '/org', label: 'Org chart', icon: '🏛️' })
+  if (isAuthorityWide(rank)) {
+    items.push({ to: '/people', label: 'People', icon: '👥' })
+    items.push({ to: '/audit', label: 'Audit trail', icon: '🔒' })
+  }
+
+  return items
 }
 
 function NotificationBell() {
@@ -58,7 +88,6 @@ function NotificationBell() {
     return () => clearInterval(timer)
   }, [])
 
-  // Close on outside click, so the panel behaves like a real menu.
   useEffect(() => {
     if (!open) return
     function onClick(e: MouseEvent) {
@@ -124,7 +153,9 @@ function NotificationBell() {
                   }`}
                 >
                   <div className="flex items-start gap-2">
-                    {!n.isRead && <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />}
+                    {!n.isRead && (
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
+                    )}
                     <div className={n.isRead ? 'pl-3.5' : ''}>
                       <p className="text-sm font-medium leading-snug text-slate-800">{n.title}</p>
                       <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{n.body}</p>
@@ -147,12 +178,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  // Close the drawer whenever navigation happens, or it stays open over the
-  // page the user just moved to.
   useEffect(() => setMobileOpen(false), [location.pathname])
 
   if (!user) return null
-  const items = NAV[user.role]
+  const items = navFor(user)
+  const posting = user.primaryPosting
+
+  /** Where this person sits, in one line under their name. */
+  const postingLine = posting
+    ? [
+        posting.designationTitle ?? RANK_LABEL[user.rank],
+        posting.sector
+          ? `Sector ${posting.sector.number}`
+          : (posting.circle?.name ?? posting.zone?.name ?? null),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : user.homeSector
+      ? `Citizen · Sector ${user.homeSector.number}`
+      : RANK_LABEL[user.rank]
 
   function handleLogout() {
     logout()
@@ -167,9 +211,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
         <div className="leading-tight">
           <div className="text-sm font-bold tracking-tight text-white">DRISHTI-G</div>
-          <div className="text-[10px] uppercase tracking-wide text-slate-400">Governance</div>
+          <div className="text-[10px] uppercase tracking-wide text-slate-400">NOIDA Authority</div>
         </div>
       </div>
+
+      {posting?.department && (
+        <div className="border-b border-slate-700/50 px-5 py-3">
+          <div className="flex items-center gap-2 text-xs text-slate-300">
+            <span aria-hidden>{posting.department.icon}</span>
+            <span className="truncate font-medium">{posting.department.name}</span>
+          </div>
+        </div>
+      )}
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
         {items.map((item) => (
@@ -200,10 +253,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
           <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-sm font-medium text-white">{user.fullName}</div>
-            <div className="truncate text-[11px] text-slate-400">
-              {ROLE_LABEL[user.role]}
-              {user.ward ? ` · Ward ${user.ward.wardNumber}` : ''}
-            </div>
+            <div className="truncate text-[11px] text-slate-400">{postingLine}</div>
           </div>
         </div>
         <button
@@ -218,12 +268,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen lg:flex">
-      {/* Desktop sidebar */}
       <aside className="hidden w-60 shrink-0 bg-slate-800 lg:block">
         <div className="sticky top-0 h-screen">{sidebar}</div>
       </aside>
 
-      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div

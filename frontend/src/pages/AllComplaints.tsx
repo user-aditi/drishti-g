@@ -3,24 +3,25 @@ import { api } from '../lib/api'
 import ComplaintCard from '../components/ComplaintCard'
 import { CardSkeleton, EmptyState, ErrorBanner, PageHeader } from '../components/ui'
 import { STATUS_META } from '../lib/format'
-import type { Complaint, ComplaintStatus, Ward } from '../lib/types'
+import type { Complaint, ComplaintStatus, Sector } from '../lib/types'
 
 const STATUS_FILTERS: (ComplaintStatus | '')[] = [
   '',
   'ROUTED',
   'ASSIGNED',
   'IN_PROGRESS',
+  'AWAITING_VERIFICATION',
   'RESOLVED',
   'CLOSED',
 ]
 
 export default function AllComplaints() {
   const [complaints, setComplaints] = useState<Complaint[]>([])
-  const [wards, setWards] = useState<Ward[]>([])
+  const [sectors, setSectors] = useState<Sector[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState<ComplaintStatus | ''>('')
-  const [wardId, setWardId] = useState<number | ''>('')
+  const [sectorId, setSectorId] = useState<number | ''>('')
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
@@ -29,7 +30,7 @@ export default function AllComplaints() {
   const SIZE = 20
 
   useEffect(() => {
-    api.wards().then(setWards).catch(() => setWards([]))
+    api.sectors().then(setSectors).catch(() => setSectors([]))
   }, [])
 
   // Debounce the search box so typing does not fire a request per keystroke.
@@ -49,7 +50,7 @@ export default function AllComplaints() {
     api
       .complaints({
         status: status || undefined,
-        wardId: wardId === '' ? undefined : wardId,
+        sectorId: sectorId === '' ? undefined : sectorId,
         q: query || undefined,
         page,
         size: SIZE,
@@ -69,7 +70,7 @@ export default function AllComplaints() {
     return () => {
       cancelled = true
     }
-  }, [status, wardId, query, page])
+  }, [status, sectorId, query, page])
 
   const pages = Math.max(1, Math.ceil(total / SIZE))
 
@@ -77,7 +78,7 @@ export default function AllComplaints() {
     <div>
       <PageHeader
         title="All complaints"
-        description="Everything filed across the city, with the routing GCCE applied."
+        description="Complaints across your jurisdiction, with the routing GCCE applied."
       />
 
       <div className="card-pad mb-5 space-y-4">
@@ -96,22 +97,22 @@ export default function AllComplaints() {
           </div>
 
           <div>
-            <label className="label" htmlFor="ward">
-              Ward
+            <label className="label" htmlFor="sector">
+              Sector
             </label>
             <select
-              id="ward"
+              id="sector"
               className="field"
-              value={wardId}
+              value={sectorId}
               onChange={(e) => {
-                setWardId(e.target.value === '' ? '' : Number(e.target.value))
+                setSectorId(e.target.value === '' ? '' : Number(e.target.value))
                 setPage(1)
               }}
             >
-              <option value="">All wards</option>
-              {wards.map((w) => (
-                <option key={w.id} value={w.id}>
-                  Ward {w.wardNumber} — {w.name}
+              <option value="">All sectors</option>
+              {sectors.map((s) => (
+                <option key={s.id} value={s.id}>
+                  Sector {s.number} — {s.name}
                 </option>
               ))}
             </select>
