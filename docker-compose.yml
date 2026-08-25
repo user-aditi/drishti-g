@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgis/postgis:16-3.4
+    image: postgres:16
     container_name: drishti_postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -23,8 +23,8 @@ services:
       NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
       NEO4J_server_memory_heap_max__size: 512m
     ports:
-      - "7474:7474"   # Neo4j Browser UI
-      - "7687:7687"   # Bolt
+      - "7474:7474"
+      - "7687:7687"
     volumes:
       - neo4j_data:/data
     healthcheck:
@@ -39,33 +39,33 @@ services:
     container_name: drishti_api
     env_file: .env
     environment:
-      POSTGRES_HOST: postgres
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       NEO4J_URI: bolt://neo4j:7687
     ports:
-      - "8000:8000"
+      - "4000:4000"
     volumes:
-      - ./backend:/app
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+      - ./backend/uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   web:
     build:
       context: ./frontend
     container_name: drishti_web
     environment:
-      VITE_API_BASE_URL: http://localhost:8000/api/v1
+      VITE_API_BASE_URL: http://localhost:4000/api/v1
     ports:
       - "5173:5173"
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
     depends_on:
       - api
-    command: npm run dev -- --host 0.0.0.0
 
 volumes:
   postgres_data:

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ApiError, api } from '../lib/api'
+import { ErrorBanner, Spinner } from '../components/ui'
 import type { Ward } from '../lib/types'
 
 export default function Register() {
@@ -10,18 +11,18 @@ export default function Register() {
   const navigate = useNavigate()
 
   const [form, setForm] = useState({
-    full_name: '',
+    fullName: '',
     email: '',
     phone: '',
     password: '',
-    ward_id: '',
+    wardId: '',
   })
   const [wards, setWards] = useState<Ward[]>([])
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // The ward list sits behind auth, so an anonymous visitor gets no options and
-  // picks a ward later instead. Failing quietly is the right behaviour here.
+  // The ward list sits behind auth, so an anonymous visitor simply gets no
+  // options and picks a ward later. Failing quietly is correct here.
   useEffect(() => {
     api
       .wards()
@@ -29,21 +30,20 @@ export default function Register() {
       .catch(() => setWards([]))
   }, [])
 
-  function update(key: keyof typeof form, value: string) {
+  const update = (key: keyof typeof form, value: string) =>
     setForm((f) => ({ ...f, [key]: value }))
-  }
 
-  async function handleSubmit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setSubmitting(true)
     try {
       await register({
-        full_name: form.full_name,
+        fullName: form.fullName,
         email: form.email,
         password: form.password,
         phone: form.phone || undefined,
-        ward_id: form.ward_id ? Number(form.ward_id) : null,
+        wardId: form.wardId ? Number(form.wardId) : null,
       })
       navigate('/', { replace: true })
     } catch (err) {
@@ -54,104 +54,119 @@ export default function Register() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10">
-      <form onSubmit={handleSubmit} className="card w-full max-w-sm space-y-4">
-        <h2 className="text-lg font-semibold">Create a citizen account</h2>
-
-        {error && (
-          <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
-            {error}
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="mb-6 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-lg font-bold text-white">
+            दृ
           </div>
-        )}
-
-        <div>
-          <label className="label" htmlFor="full_name">
-            Full name
-          </label>
-          <input
-            id="full_name"
-            required
-            minLength={2}
-            className="field"
-            value={form.full_name}
-            onChange={(e) => update('full_name', e.target.value)}
-          />
+          <h1 className="mt-3 text-xl font-bold text-slate-900">Create your account</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Report civic issues and follow them through to resolution.
+          </p>
         </div>
 
-        <div>
-          <label className="label" htmlFor="email">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            className="field"
-            value={form.email}
-            onChange={(e) => update('email', e.target.value)}
-          />
-        </div>
+        <form onSubmit={submit} className="card-pad space-y-4">
+          {error && <ErrorBanner message={error} />}
 
-        <div>
-          <label className="label" htmlFor="phone">
-            Phone <span className="font-normal text-slate-400">(optional)</span>
-          </label>
-          <input
-            id="phone"
-            className="field"
-            value={form.phone}
-            onChange={(e) => update('phone', e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="label" htmlFor="password">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            minLength={8}
-            className="field"
-            value={form.password}
-            onChange={(e) => update('password', e.target.value)}
-          />
-          <p className="mt-1 text-xs text-slate-500">At least 8 characters.</p>
-        </div>
-
-        {wards.length > 0 && (
           <div>
-            <label className="label" htmlFor="ward_id">
-              Your ward <span className="font-normal text-slate-400">(optional)</span>
+            <label className="label" htmlFor="fullName">
+              Full name
             </label>
-            <select
-              id="ward_id"
+            <input
+              id="fullName"
+              required
+              minLength={2}
               className="field"
-              value={form.ward_id}
-              onChange={(e) => update('ward_id', e.target.value)}
-            >
-              <option value="">Select a ward</option>
-              {wards.map((w) => (
-                <option key={w.id} value={w.id}>
-                  Ward {w.ward_number} &mdash; {w.name}
-                </option>
-              ))}
-            </select>
+              placeholder="Meera Joshi"
+              value={form.fullName}
+              onChange={(e) => update('fullName', e.target.value)}
+            />
           </div>
-        )}
 
-        <button type="submit" className="btn-primary w-full" disabled={submitting}>
-          {submitting ? 'Creating account...' : 'Create account'}
-        </button>
+          <div>
+            <label className="label" htmlFor="email">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              required
+              className="field"
+              placeholder="you@example.com"
+              value={form.email}
+              onChange={(e) => update('email', e.target.value)}
+            />
+          </div>
 
-        <p className="text-center text-sm text-slate-600">
-          Already registered?
-          <Link to="/login" className="ml-1 font-medium text-brand-600 hover:underline">
-            Sign in
-          </Link>
-        </p>
-      </form>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="phone">
+                Phone <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <input
+                id="phone"
+                className="field"
+                placeholder="98765 43210"
+                value={form.phone}
+                onChange={(e) => update('phone', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="label" htmlFor="password">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                required
+                minLength={8}
+                className="field"
+                placeholder="At least 8 characters"
+                value={form.password}
+                onChange={(e) => update('password', e.target.value)}
+              />
+            </div>
+          </div>
+
+          {wards.length > 0 && (
+            <div>
+              <label className="label" htmlFor="wardId">
+                Your ward <span className="font-normal text-slate-400">(optional)</span>
+              </label>
+              <select
+                id="wardId"
+                className="field"
+                value={form.wardId}
+                onChange={(e) => update('wardId', e.target.value)}
+              >
+                <option value="">Select your ward</option>
+                {wards.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    Ward {w.wardNumber} &mdash; {w.name}
+                  </option>
+                ))}
+              </select>
+              <p className="hint">
+                Used to route complaints when your phone cannot supply a location.
+              </p>
+            </div>
+          )}
+
+          <button type="submit" className="btn-primary w-full" disabled={submitting}>
+            {submitting && <Spinner />}
+            {submitting ? 'Creating account…' : 'Create account'}
+          </button>
+
+          <p className="text-center text-sm text-slate-600">
+            Already registered?
+            <Link to="/login" className="ml-1 font-medium text-brand-600 hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </form>
+      </div>
     </div>
   )
 }

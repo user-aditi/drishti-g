@@ -1,0 +1,400 @@
+// DRISHTI-G data model.
+//
+// Postgres is the system of record. Neo4j holds a derived projection of the
+// relationships GCCE and GRIE traverse; it can always be rebuilt from here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CITIZEN
+  FIELD_OFFICIAL
+  ADMIN
+}
+
+enum ComplaintStatus {
+  SUBMITTED // filed, GCCE has not run yet
+  ROUTED // department + ward resolved, nobody owns it
+  ASSIGNED // a field official owns it
+  IN_PROGRESS
+  RESOLVED // official submitted evidence
+  CLOSED // supervisor signed off
+  REJECTED
+  DUPLICATE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RiskBand {
+  LOW // 0-39
+  MODERATE // 40-59
+  HIGH // 60-79
+  SEVERE // 80-100
+}
+
+enum RiskEntityType {
+  WARD
+  CONTRACTOR
+  PROJECT
+}
+
+enum ReviewStatus {
+  PENDING
+  ACKNOWLEDGED
+  ACTIONED
+  DISMISSED
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  email          String   @unique
+  hashedPassword String
+  fullName       String
+  phone          String?
+  role           UserRole
+  isActive       Boolean  @default(true)
+
+  // Citizens get a home ward. Field officials get the ward + department they
+  // serve — GCCE assigns work on exactly that pair. Admins have neither.
+  wardId       Int?
+  departmentId Int?
+  ward         Ward?       @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  filedComplaints    Complaint[]              @relation("ComplaintCitizen")
+  assignedComplaints Complaint[]              @relation("ComplaintAssignee")
+  statusUpdates      ComplaintStatusHistory[]
+  notifications      Notification[]
+  auditEvents        AuditEvent[]
+  reviewedFlags      RiskFlag[]
+  inspections        Inspection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role, wardId, departmentId])
+  @@map("users")
+}
+
+model Department {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique
+  name        String
+  description String?
+
+  categories ComplaintCategory[]
+  officials  User[]
+  complaints Complaint[]
+  projects   Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("departments")
+}
+
+model Ward {
+  id         Int     @id @default(autoincrement())
+  wardNumber Int     @unique
+  name       String
+  zone       String?
+  population Int?
+
+  // Ward centroid. GCCE routes to the nearest centroid when the citizen's
+  // coordinates do not fall inside a stored boundary.
+  centroidLat Float?
+  centroidLon Float?
+
+  residents  User[]
+  complaints Complaint[]
+  projects   Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("wards")
+}
+
+model ComplaintCategory {
+  id           Int    @id @default(autoincrement())
+  code         String @unique
+  name         String
+  departmentId Int
+
+  /// Hours from routing to the SLA deadline GCCE stamps on the complaint.
+  defaultSlaHours Int    @default(72)
+  /// Comma-separated hints for GCCE's keyword classifier, including Hinglish.
+  keywords        String @default("")
+  /// Emoji shown in the UI so a citizen can pick a category at a glance.
+  icon            String @default("📋")
+
+  department Department  @relation(fields: [departmentId], references: [id])
+  complaints Complaint[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("complaint_categories")
+}
+
+model Complaint {
+  id Int @id @default(autoincrement())
+
+  /// Human-facing reference a citizen quotes on the phone, e.g. DG-2026-000042
+  referenceNo String @unique
+
+  citizenId   Int
+  title       String
+  description String
+  photoUrl    String?
+
+  latitude  Float?
+  longitude Float?
+  address   String?
+
+  // Everything below is set by GCCE at routing time, not by the citizen.
+  categoryId   Int?
+  departmentId Int?
+  wardId       Int?
+  assignedToId Int?
+
+  status   ComplaintStatus @default(SUBMITTED)
+  priority Priority        @default(MEDIUM)
+
+  slaDueAt   DateTime?
+  resolvedAt DateTime?
+  closedAt   DateTime?
+
+  /// Set when GCCE or a supervisor marks this a repeat of an earlier report.
+  duplicateOfId Int?
+
+  /// Citizen satisfaction, 1-5, captured after closure.
+  feedbackRating  Int?
+  feedbackComment String?
+
+  citizen     User               @relation("ComplaintCitizen", fields: [citizenId], references: [id])
+  assignedTo  User?              @relation("ComplaintAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  category    ComplaintCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  department  Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  ward        Ward?              @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  duplicateOf Complaint?         @relation("Duplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates  Complaint[]        @relation("Duplicates")
+
+  history ComplaintStatusHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, wardId])
+  @@index([citizenId])
+  @@index([assignedToId, status])
+  @@map("complaints")
+}
+
+model ComplaintStatusHistory {
+  id          Int              @id @default(autoincrement())
+  complaintId Int
+  fromStatus  ComplaintStatus?
+  toStatus    ComplaintStatus
+  actorId     Int?
+  note        String?
+  evidenceUrl String?
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([complaintId])
+  @@map("complaint_status_history")
+}
+
+model Contractor {
+  id             Int     @id @default(autoincrement())
+  code           String  @unique
+  name           String
+  registrationNo String?
+  contactEmail   String?
+  isBlacklisted  Boolean @default(false)
+
+  projects Project[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("contractors")
+}
+
+model Project {
+  id          Int     @id @default(autoincrement())
+  code        String  @unique
+  name        String
+  description String?
+
+  contractorId Int?
+  departmentId Int?
+  wardId       Int?
+
+  // Money is Decimal, never Float — GRIE divides these and the paper reports
+  // the results.
+  budgetAllocated Decimal? @db.Decimal(14, 2)
+  budgetSpent     Decimal? @db.Decimal(14, 2)
+
+  plannedStart DateTime?
+  plannedEnd   DateTime?
+  actualStart  DateTime?
+  actualEnd    DateTime?
+
+  completionPct Float? @default(0)
+
+  contractor  Contractor?  @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+  department  Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  ward        Ward?        @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  inspections Inspection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("projects")
+}
+
+model Inspection {
+  id           Int       @id @default(autoincrement())
+  projectId    Int
+  inspectorId  Int?
+  scheduledFor DateTime?
+  conductedOn  DateTime?
+  passed       Boolean?
+  /// 0-100 inspection score.
+  score        Int?
+  remarks      String?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  inspector User?   @relation(fields: [inspectorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@map("inspections")
+}
+
+/// One GRIE score for one entity at one point in time.
+///
+/// Append-only: recomputing writes a new row rather than updating, so a score's
+/// history stays inspectable and the paper's experiments can replay it.
+model RiskScore {
+  id         Int            @id @default(autoincrement())
+  entityType RiskEntityType
+  entityId   Int
+
+  score Float
+  band  RiskBand
+
+  /// The whole point of GRIE. Shape:
+  /// [{ factor, label, raw, normalised, weight, contribution, explanation }]
+  factors Json
+
+  /// Which weight set produced this score, so results stay reproducible after
+  /// the weights are tuned.
+  modelVersion String @default("v1-weighted")
+
+  flags RiskFlag[]
+
+  computedAt DateTime @default(now())
+
+  @@index([entityType, entityId, computedAt])
+  @@map("risk_scores")
+}
+
+/// A score that crossed the review threshold and needs a human decision.
+model RiskFlag {
+  id          Int            @id @default(autoincrement())
+  riskScoreId Int
+  entityType  RiskEntityType
+  entityId    Int
+  /// Denormalised so the queue reads without a join back to the entity.
+  entityLabel String
+
+  score  Float
+  band   RiskBand
+  reason String
+  status ReviewStatus @default(PENDING)
+
+  reviewedById Int?
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  riskScore  RiskScore @relation(fields: [riskScoreId], references: [id], onDelete: Cascade)
+  reviewedBy User?     @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, band])
+  @@map("risk_flags")
+}
+
+model Notification {
+  id     Int    @id @default(autoincrement())
+  userId Int
+  title  String
+  body   String
+  /// Deep link into the app, e.g. /complaints/42
+  link   String?
+  /// in_app | email | sms
+  channel String @default("in_app")
+
+  isRead Boolean   @default(false)
+  sentAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+/// Tamper-evident audit trail.
+///
+/// Each row's hash covers its own content plus the previous row's hash, so
+/// editing or deleting any historical row breaks every hash after it. Same
+/// integrity guarantee the plan wanted from blockchain, without the ledger.
+model AuditEvent {
+  id Int @id @default(autoincrement())
+
+  actorId Int?
+  /// Denormalised so the trail stays readable if the user row is removed.
+  actorLabel String?
+
+  action     String
+  entityType String
+  entityId   String
+
+  payload Json
+  /// Which engine wrote this: gcce | grie | api | system
+  source  String @default("api")
+
+  prevHash String?
+  hash     String
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_events")
+}

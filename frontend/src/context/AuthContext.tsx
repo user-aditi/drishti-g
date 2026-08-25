@@ -5,18 +5,20 @@ import type { User, UserRole } from '../lib/types'
 
 interface AuthState {
   user: User | null
-  /** True until the stored token has been checked against the server. Routes
-   *  must wait for this, or a refresh on a protected page bounces to /login
-   *  before the session is restored. */
+  /**
+   * True until the stored token has been checked against the server. Routes must
+   * wait for this, or a refresh on a protected page bounces to /login before the
+   * session is restored.
+   */
   loading: boolean
-  login: (email: string, password: string) => Promise<void>
+  login: (email: string, password: string) => Promise<User>
   register: (payload: {
     email: string
     password: string
-    full_name: string
+    fullName: string
     phone?: string
-    ward_id?: number | null
-  }) => Promise<void>
+    wardId?: number | null
+  }) => Promise<User>
   logout: () => void
   hasRole: (...roles: UserRole[]) => boolean
 }
@@ -52,15 +54,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
-    const pair = await api.login(email, password)
-    tokenStore.set(pair.access_token, pair.refresh_token)
-    setUser(pair.user)
+    const res = await api.login(email, password)
+    tokenStore.set(res.accessToken, res.refreshToken)
+    setUser(res.user)
+    return res.user
   }, [])
 
   const register = useCallback<AuthState['register']>(async (payload) => {
-    const pair = await api.register(payload)
-    tokenStore.set(pair.access_token, pair.refresh_token)
-    setUser(pair.user)
+    const res = await api.register(payload)
+    tokenStore.set(res.accessToken, res.refreshToken)
+    setUser(res.user)
+    return res.user
   }, [])
 
   const logout = useCallback(() => {
