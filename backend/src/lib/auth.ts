@@ -7,6 +7,16 @@ const SALT_ROUNDS = 10
 
 export type TokenType = 'access' | 'refresh'
 
+/**
+ * Cookie names.
+ *
+ * The tokens are also returned in the response body for API clients, but the
+ * cookies are what let a Next.js server component authenticate a request it is
+ * rendering — server components cannot read localStorage.
+ */
+export const ACCESS_COOKIE = 'drishti_access'
+export const REFRESH_COOKIE = 'drishti_refresh'
+
 export interface TokenPayload {
   sub: string
   type: TokenType

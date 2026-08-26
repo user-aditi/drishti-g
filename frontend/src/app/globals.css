@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+    /* Primary — slate-teal. Reads as civic and administrative without looking
+       like a consumer app, and stays legible against the risk colours. */
+    --primary: #22666B;
+    --primary-light: #2F7F83;
+    --primary-foreground: #FFFFFF;
+
+    --secondary: #1D4ED8;
+    --secondary-foreground: #FFFFFF;
+
+    /* Semantic */
+    --success: #059669;
+    --warning: #CA8A04;
+    --error: #DC2626;
+
+    /* Surfaces */
+    --background: #F1F5F9;
+    --foreground: #0F172A;
+    --card: #FFFFFF;
+    --card-foreground: #0F172A;
+    --popover: #FFFFFF;
+    --popover-foreground: #0F172A;
+    --muted: #F1F5F9;
+    --muted-foreground: #64748B;
+    --accent: #EEF7F7;
+    --accent-foreground: #1D5256;
+    --border: #E2E8F0;
+    --input: #CBD5E1;
+    --ring: #2F7F83;
+
+    /* GRIE risk bands. These map 1:1 to the RiskBand enum in the backend. */
+    --risk-low: #059669;
+    --risk-moderate: #CA8A04;
+    --risk-high: #EA580C;
+    --risk-severe: #DC2626;
+
+    /* Complaint status. One colour per state, used by badges and the map. */
+    --status-submitted: #94A3B8;
+    --status-routed: #0EA5E9;
+    --status-assigned: #2F7F83;
+    --status-in-progress: #F59E0B;
+    --status-awaiting: #8B5CF6;
+    --status-resolved: #10B981;
+    --status-closed: #64748B;
+    --status-rejected: #EF4444;
+
+    /* The chain of command, light to dark by seniority. */
+    --rank-worker: #14B8A6;
+    --rank-section: #2F7F83;
+    --rank-circle: #6366F1;
+    --rank-zonal: #8B5CF6;
+    --rank-hod: #A855F7;
+    --rank-ceo: #D97706;
+
+    --sidebar: #1E293B;
+    --sidebar-foreground: #E2E8F0;
+    --sidebar-muted: #94A3B8;
+    --sidebar-accent: rgba(47, 127, 131, 0.18);
+    --sidebar-border: rgba(148, 163, 184, 0.18);
+
+    --radius: 0.625rem;
+}
+
+.dark {
+    --background: #0B1220;
+    --foreground: #E2E8F0;
+    --card: #111C2E;
+    --card-foreground: #E2E8F0;
+    --popover: #111C2E;
+    --popover-foreground: #E2E8F0;
+    --muted: #1B2942;
+    --muted-foreground: #94A3B8;
+    --accent: #16323A;
+    --accent-foreground: #7BBCBE;
+    --border: rgba(148, 163, 184, 0.16);
+    --input: rgba(148, 163, 184, 0.28);
+    --primary: #4A9B9E;
+    --primary-foreground: #04191B;
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-light: var(--primary-light);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-error: var(--error);
+
+    --color-risk-low: var(--risk-low);
+    --color-risk-moderate: var(--risk-moderate);
+    --color-risk-high: var(--risk-high);
+    --color-risk-severe: var(--risk-severe);
+
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-muted: var(--sidebar-muted);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-border: var(--sidebar-border);
+
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+
+    --font-sans: var(--font-inter), 'Noto Sans Devanagari', system-ui, sans-serif;
+    --font-mono: var(--font-mono-jet), ui-monospace, monospace;
+}
+
+* {
+    border-color: var(--border);
+}
+
+body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures keep dashboard numbers from jittering as they update. */
+.tnum {
+    font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.skip-link {
+    position: absolute;
+    top: -48px;
+    left: 0;
+    z-index: 100;
+    background: var(--primary);
+    color: white;
+    padding: 8px 16px;
+    transition: top 0.2s;
+}
+
+.skip-link:focus {
+    top: 0;
+}
+
+/* Leaflet renders its own container; keep it inside our rounded corners. */
+.leaflet-container {
+    height: 100%;
+    width: 100%;
+    font-family: inherit;
+    border-radius: var(--radius);
+}
+
+/* A sweep for skeleton placeholders. */
+@keyframes shimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}

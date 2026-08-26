@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 import { Rank } from '@prisma/client'
-import { verifyToken } from '../lib/auth.js'
+import { ACCESS_COOKIE, verifyToken } from '../lib/auth.js'
 import { prisma } from '../lib/prisma.js'
 import { RANK_LEVEL, isOfficer } from '../services/hierarchy.js'
 import { asyncHandler, forbidden, unauthorized } from '../utils/http.js'
@@ -8,12 +8,18 @@ import { asyncHandler, forbidden, unauthorized } from '../utils/http.js'
 /** Populates req.user with the caller and their active postings, or 401s. */
 export const authenticate = asyncHandler(
   async (req: Request, _res: Response, next: NextFunction) => {
+    // Two ways in: an Authorization header for API clients and the browser's
+    // own fetches, and an httpOnly cookie so Next.js server components can
+    // authenticate a request they are rendering without touching localStorage.
     const header = req.headers.authorization
-    if (!header?.startsWith('Bearer ')) throw unauthorized()
+    const bearer = header?.startsWith('Bearer ') ? header.slice(7) : null
+    const cookie = (req.cookies as Record<string, string> | undefined)?.[ACCESS_COOKIE]
+    const token = bearer ?? cookie
+    if (!token) throw unauthorized()
 
     let userId: number
     try {
-      userId = Number(verifyToken(header.slice(7), 'access').sub)
+      userId = Number(verifyToken(token, 'access').sub)
     } catch {
       throw unauthorized('Your session is invalid or has expired')
     }

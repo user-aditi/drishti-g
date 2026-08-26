@@ -1,7 +1,8 @@
 import { Router } from 'express'
 import { Rank } from '@prisma/client'
 import { z } from 'zod'
-import { hashPassword, signToken, verifyPassword, verifyToken } from '../lib/auth.js'
+import { REFRESH_COOKIE, hashPassword, signToken, verifyPassword, verifyToken } from '../lib/auth.js'
+import { clearAuthCookies, setAuthCookies } from '../lib/cookies.js'
 import { prisma } from '../lib/prisma.js'
 import { authenticate } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
@@ -76,7 +77,9 @@ authRouter.post(
       return tx.user.findUniqueOrThrow({ where: { id: created.id }, include: USER_INCLUDE })
     })
 
-    res.status(201).json({ ...tokensFor(user), user: publicUser(user) })
+    const tokens = tokensFor(user)
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
+    res.status(201).json({ ...tokens, user: publicUser(user) })
   }),
 )
 
@@ -105,15 +108,20 @@ authRouter.post(
       }),
     )
 
-    res.json({ ...tokensFor(user), user: publicUser(user) })
+    const tokens = tokensFor(user)
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
+    res.json({ ...tokens, user: publicUser(user) })
   }),
 )
 
 authRouter.post(
   '/refresh',
-  validate(z.object({ refreshToken: z.string().min(1) })),
+  validate(z.object({ refreshToken: z.string().min(1).optional() })),
   asyncHandler(async (req, res) => {
-    const { refreshToken } = req.body as { refreshToken: string }
+    const body = req.body as { refreshToken?: string }
+    const cookies = req.cookies as Record<string, string> | undefined
+    const refreshToken = body.refreshToken ?? cookies?.[REFRESH_COOKIE]
+    if (!refreshToken) throw unauthorized('Your session has expired — please sign in again')
 
     let userId: number
     try {
@@ -127,9 +135,17 @@ authRouter.post(
       throw unauthorized('Your session has expired — please sign in again')
     }
 
-    res.json({ accessToken: signToken(user.id, 'access', user.rank) })
+    const accessToken = signToken(user.id, 'access', user.rank)
+    setAuthCookies(res, accessToken)
+    res.json({ accessToken })
   }),
 )
+
+/** Clears the session cookies. The client also drops its own copy of the tokens. */
+authRouter.post('/logout', (_req, res) => {
+  clearAuthCookies(res)
+  res.json({ ok: true })
+})
 
 authRouter.get(
   '/me',

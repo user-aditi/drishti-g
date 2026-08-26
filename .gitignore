@@ -18,3 +18,7 @@ data/generated/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Next.js
+.next/
+next-env.d.ts
