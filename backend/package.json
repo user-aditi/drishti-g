@@ -13,7 +13,8 @@
     "seed": "dotenv -e ../.env -- tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prisma:studio": "dotenv -e ../.env -- prisma studio"
+    "prisma:studio": "dotenv -e ../.env -- prisma studio",
+    "export:model": "tsx scripts/export-model-spec.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.2.1",

@@ -1,0 +1,7 @@
+regime,entity_type,best_black_box,black_box_skill,grie_skill,grie_tuned_skill,skill_gap,skill_gap_after_tuning,gap_closed_by_tuning
+adversarial,CONTRACTOR,Gradient boosting,0.9698,0.8932,0.9777,0.0766,-0.0079,100%
+adversarial,PROJECT,Random forest,0.9697,0.9428,0.9477,0.0269,0.022,18%
+adversarial,SECTOR,Random forest,0.9815,0.8714,0.9541,0.1101,0.0274,75%
+plausible,CONTRACTOR,Random forest,0.9506,0.9707,0.9885,-0.0201,-0.0379,n/a (already ahead)
+plausible,PROJECT,Random forest,0.9389,0.9667,0.9788,-0.0278,-0.0399,n/a (already ahead)
+plausible,SECTOR,Random forest,0.9582,0.9561,0.9712,0.0021,-0.0131,n/a (gap negligible)

@@ -1,0 +1,271 @@
+{
+  "modelVersion": "v1-weighted",
+  "reviewThreshold": 60,
+  "bands": [
+    {
+      "band": "SEVERE",
+      "min": 80
+    },
+    {
+      "band": "HIGH",
+      "min": 60
+    },
+    {
+      "band": "MODERATE",
+      "min": 40
+    },
+    {
+      "band": "LOW",
+      "min": 0
+    }
+  ],
+  "factorSets": {
+    "SECTOR": [
+      {
+        "key": "slaBreachRate",
+        "label": "Missed deadlines",
+        "weight": 0.28,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "repeatComplaintRate",
+        "label": "Repeat complaints",
+        "weight": 0.27,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "escalationRate",
+        "label": "Escalations",
+        "weight": 0.2,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "openComplaintLoad",
+        "label": "Open complaint load",
+        "weight": 0.15,
+        "curve": {
+          "kind": "linear",
+          "cap": 25
+        }
+      },
+      {
+        "key": "avgResolutionDays",
+        "label": "Resolution speed",
+        "weight": 0.1,
+        "curve": {
+          "kind": "linear",
+          "cap": 14
+        }
+      }
+    ],
+    "CIRCLE": [
+      {
+        "key": "slaBreachRate",
+        "label": "Missed deadlines",
+        "weight": 0.28,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "repeatComplaintRate",
+        "label": "Repeat complaints",
+        "weight": 0.27,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "escalationRate",
+        "label": "Escalations",
+        "weight": 0.2,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "openComplaintLoad",
+        "label": "Open complaint load",
+        "weight": 0.15,
+        "curve": {
+          "kind": "linear",
+          "cap": 70
+        }
+      },
+      {
+        "key": "avgResolutionDays",
+        "label": "Resolution speed",
+        "weight": 0.1,
+        "curve": {
+          "kind": "linear",
+          "cap": 14
+        }
+      }
+    ],
+    "ZONE": [
+      {
+        "key": "slaBreachRate",
+        "label": "Missed deadlines",
+        "weight": 0.28,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "repeatComplaintRate",
+        "label": "Repeat complaints",
+        "weight": 0.27,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "escalationRate",
+        "label": "Escalations",
+        "weight": 0.2,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "openComplaintLoad",
+        "label": "Open complaint load",
+        "weight": 0.15,
+        "curve": {
+          "kind": "linear",
+          "cap": 180
+        }
+      },
+      {
+        "key": "avgResolutionDays",
+        "label": "Resolution speed",
+        "weight": 0.1,
+        "curve": {
+          "kind": "linear",
+          "cap": 14
+        }
+      }
+    ],
+    "DEPARTMENT": [
+      {
+        "key": "slaBreachRate",
+        "label": "Missed deadlines",
+        "weight": 0.28,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "repeatComplaintRate",
+        "label": "Repeat complaints",
+        "weight": 0.27,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "escalationRate",
+        "label": "Escalations",
+        "weight": 0.2,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "openComplaintLoad",
+        "label": "Open complaint load",
+        "weight": 0.15,
+        "curve": {
+          "kind": "linear",
+          "cap": 250
+        }
+      },
+      {
+        "key": "avgResolutionDays",
+        "label": "Resolution speed",
+        "weight": 0.1,
+        "curve": {
+          "kind": "linear",
+          "cap": 14
+        }
+      }
+    ],
+    "PROJECT": [
+      {
+        "key": "budgetOverrun",
+        "label": "Budget overrun",
+        "weight": 0.3,
+        "curve": {
+          "kind": "linear",
+          "cap": 0.5
+        }
+      },
+      {
+        "key": "scheduleDelayDays",
+        "label": "Schedule delay",
+        "weight": 0.25,
+        "curve": {
+          "kind": "linear",
+          "cap": 180
+        }
+      },
+      {
+        "key": "inspectionFailureRate",
+        "label": "Inspection failures",
+        "weight": 0.25,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "linkedComplaints",
+        "label": "Linked complaints",
+        "weight": 0.2,
+        "curve": {
+          "kind": "linear",
+          "cap": 20
+        }
+      }
+    ],
+    "CONTRACTOR": [
+      {
+        "key": "avgProjectRisk",
+        "label": "Average project risk",
+        "weight": 0.4,
+        "curve": {
+          "kind": "identity"
+        }
+      },
+      {
+        "key": "lateDeliveryRate",
+        "label": "Late delivery history",
+        "weight": 0.3,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "inspectionFailureRate",
+        "label": "Inspection failures",
+        "weight": 0.2,
+        "curve": {
+          "kind": "proportion"
+        }
+      },
+      {
+        "key": "isBlacklisted",
+        "label": "Blacklisting",
+        "weight": 0.1,
+        "curve": {
+          "kind": "boolean"
+        }
+      }
+    ]
+  }
+}
