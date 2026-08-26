@@ -37,7 +37,7 @@ cd frontend && npm install && npm run dev
 
 | Service | URL |
 |---|---|
-| Web app | http://localhost:5173 |
+| Web app | http://localhost:3000 |
 | API | http://localhost:4000/api/v1 |
 | Health check | http://localhost:4000/api/v1/health |
 | Neo4j Browser | http://localhost:7474 |
@@ -111,14 +111,26 @@ Everything hangs off a **Posting** — one row joining *person × department × 
 ## Architecture
 
 ```
-frontend/            React 18 + TypeScript + Tailwind + Vite + Leaflet
+frontend/            Next.js 14 App Router + TypeScript + Tailwind 4 + Leaflet
   src/
-    components/      AppShell (rank-aware nav), RiskExplanation, Timeline, ui primitives
-    context/         AuthContext — session restore, login, rank checks
-    lib/             api client (single-flight refresh), types, formatters
-    pages/           Login, Register, CitizenHome, NewComplaint, ComplaintDetail,
-                     OfficerDesk, WorkerJobs, Oversight, Escalations, RiskQueue,
-                     SectorRisk, ComplaintMap, OrgChart, Departments, People, AuditTrail
+    app/
+      (auth)/        login, register — outside the app shell
+      (citizen)/     dashboard, file a complaint, complaint detail, departments
+      worker/        the field worker phone view
+      officer/       the Section Officer desk, inspection queue, sector map
+      admin/         oversight from Circle Officer up: dashboard, escalations,
+                     complaints, risk queue, sector risk, map, org chart,
+                     people, departments, audit trail
+    components/
+      ui/            cva primitives: button, card, badge, input, select, ...
+      shared/        risk explanation and dial, timeline, complaint card,
+                     status badges, rank-aware sidebar and topbar, map
+    lib/             server api (forwards the cookie), browser api client,
+                     auth guards, design tokens, formatters
+
+research/            the interpretability experiment — see research/README.md
+  drishti_research/  generator, models, tuning, diagnostics, experiments
+  data/              model-spec.json, exported from the backend
 
 backend/             Node 22 + TypeScript + Express + Prisma
   prisma/
@@ -219,6 +231,6 @@ The generator uses a fixed PRNG seed, so every teammate's database is identical.
 
 1. **Email notifications** — already persisted first, so a sender only drains unsent rows
 2. **Hindi/Hinglish auto-categorisation** (MuRIL / IndicBERT) — GCCE's keyword matcher is the fallback it will sit in front of
-3. **The research harness** — dataset generator, the scikit-learn control model, the experiment runner
-4. **Scheduled escalation** — the sweep exists and is exposed as an endpoint; it needs a cron
-5. **Duplicate detection** and the public transparency page
+3. **Scheduled escalation** — the sweep exists and is exposed as an endpoint; it needs a cron
+4. **Duplicate detection** and the public transparency page
+5. **For the paper** — replace the unverified calibration parameters with cited figures, and add bootstrap intervals on the skill gap (see `research/README.md`)
