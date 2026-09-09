@@ -68,6 +68,24 @@ CASE_KEEP = {
 
 ATTR = re.compile(r'<(\w+) key="([^"]+)" value="([^"]*)"')
 
+#: Subprocesses that mean the case came back after being settled.
+#:
+#: Two distinct routes to the same governance fact. `Objection` is the applicant
+#: contesting a decision — the direct analogue of BPIC 2015's `01_BB` track. A
+#: `revoke decision` event is the authority reversing its own completed
+#: decision. Both say a case that had been dealt with was reopened, which is
+#: what GRIE's recurrence factor measures once it was corrected to mean "the
+#: repair did not hold" rather than "we have seen this category before".
+RETURN_SUBPROCESSES = {"Objection"}
+REVOKE_ACTIVITY = "revoke decision"
+
+#: Subprocesses that mean desk processing was not enough.
+#:
+#: A case routed to physical or remote inspection has left the routine track and
+#: pulled in a resource beyond the handling officer. That is the structural role
+#: escalation plays in DRISHTI-G: the normal path was insufficient.
+INSPECTION_SUBPROCESSES = {"On-Site", "Remote"}
+
 #: Most of the busiest `org:resource` values are software, not people.
 #:
 #: "Processing automaton" alone accounts for 165,000 events — more than any
@@ -83,17 +101,48 @@ AUTOMATA = {
     "0;n/a",
 }
 
+#: A resource touching more than this share of all cases is a system account.
+#:
+#: The named-automata set above is not sufficient. `727350` is an opaque
+#: six-digit identifier indistinguishable by name from a human, and it appears
+#: on **78% of all cases** — 34,290 of 43,809, a hundred times the next busiest
+#: resource — with 193,100 `calculate` events against 477 `insert document`.
+#: That is a batch calculation engine. No individual case worker owns a fifth of
+#: a federal agency's three-year caseload, so the threshold is set at 0.20 and
+#: the exclusion is derived rather than hand-listed. Naming the ID directly
+#: would work and would be the obvious question at review; this rule answers it.
+#:
+#: Cases the engine touched are *not* dropped. Ownership falls through to the
+#: most frequent human on the case, which is what the panel wants: the engine
+#: ran a calculation, a person still handled the application.
+MAX_HUMAN_CASE_SHARE = 0.20
 
-def owner(resources: Counter[str]) -> str | None:
-    """The human who touched this case most, or None if only software did.
 
-    Picking a resource arbitrarily — the first, or the alphabetically last —
-    silently mixes people and batch jobs, and the resulting panel measures
-    neither. Cases handled entirely by automation have no owner and are dropped
-    from the panel rather than attributed to a machine.
+def resolve_owners(per_case: list[Counter[str]]) -> tuple[list[str | None], set[str]]:
+    """Assign each case its owning human, excluding derived system accounts.
+
+    Two things have to happen in this order: a resource's case share can only be
+    known after every case is read, and ownership can only be assigned once the
+    system accounts are known. So the pass collects counters and this resolves
+    them afterwards, rather than committing to an owner mid-stream.
     """
-    human = Counter({r: n for r, n in resources.items() if r not in AUTOMATA and " " not in r})
-    return human.most_common(1)[0][0] if human else None
+    appearances: Counter[str] = Counter()
+    for resources in per_case:
+        for r in resources:
+            appearances[r] += 1
+
+    total = len(per_case)
+    systems = {
+        r
+        for r, n in appearances.items()
+        if r in AUTOMATA or " " in r or n / total > MAX_HUMAN_CASE_SHARE
+    }
+
+    owners: list[str | None] = []
+    for resources in per_case:
+        human = Counter({r: n for r, n in resources.items() if r not in systems})
+        owners.append(human.most_common(1)[0][0] if human else None)
+    return owners, systems
 
 
 def parse() -> pd.DataFrame:
@@ -105,9 +154,11 @@ def parse() -> pd.DataFrame:
     last_ts: str | None = None
     subprocesses: set[str] = set()
     resources: Counter[str] = Counter()
+    revoked = False
     in_event = False
 
     def flush() -> None:
+        nonlocal revoked
         if not case:
             return
         rows.append(
@@ -120,10 +171,14 @@ def parse() -> pd.DataFrame:
                 "started": first_ts,
                 "finished": last_ts,
                 "subprocesses": len(subprocesses),
+                # A case that was settled and then reopened, either way round.
+                "returned": bool(subprocesses & RETURN_SUBPROCESSES) or revoked,
+                "revoked": revoked,
+                "objected": bool(subprocesses & RETURN_SUBPROCESSES),
+                "inspected": bool(subprocesses & INSPECTION_SUBPROCESSES),
                 "resources": len(resources),
-                # The person who touched the case most is the closest thing to
-                # an owner, and ownership is what a panel is built on.
-                "resource": owner(resources),
+                # Owner is resolved after the pass — see `resolve_owners`.
+                "_resources": resources,
             }
         )
 
@@ -134,6 +189,7 @@ def parse() -> pd.DataFrame:
             if s.startswith("<trace"):
                 case, events, first_ts, last_ts = {}, 0, None, None
                 subprocesses, resources, in_event = set(), Counter(), False
+                revoked = False
                 continue
             if s.startswith("</trace"):
                 flush()
@@ -158,10 +214,21 @@ def parse() -> pd.DataFrame:
                     subprocesses.add(value)
                 elif key == "org:resource":
                     resources[value] += 1
+                elif key == "concept:name" and value == REVOKE_ACTIVITY:
+                    revoked = True
             else:
                 case[key] = value
 
     frame = pd.DataFrame(rows)
+
+    # Ownership needs the whole log: a resource's case share is what identifies
+    # it as a system account, and that cannot be known one case at a time.
+    owners, systems = resolve_owners([r["_resources"] for r in rows])
+    frame["resource"] = owners
+    frame = frame.drop(columns=["_resources"])
+    frame.attrs["system_accounts"] = sorted(systems)
+    print(f"  excluded {len(systems)} system accounts: {sorted(systems)}")
+
     frame["started"] = pd.to_datetime(frame["started"], utc=True, format="ISO8601")
     frame["finished"] = pd.to_datetime(frame["finished"], utc=True, format="ISO8601")
     frame["days"] = (frame["finished"] - frame["started"]).dt.total_seconds() / 86400

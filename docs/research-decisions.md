@@ -593,3 +593,105 @@ Figure: `research/results/transfer.png`. Data: `research/results/transfer.csv`.
 models fitted on a source organisation, and the advantage is larger under
 transfer than within a single population.* That is a deployment-relevant claim,
 which the in-distribution comparison on its own is not.
+
+
+---
+
+## Second organisation: BPI Challenge 2018
+
+**Run 10 September 2026. Verdict: the advantage did NOT replicate. Report it.**
+
+### Why it was run
+
+Every real-data number in the study came from BPIC 2015 — five Dutch
+municipalities sharing a code scheme, a regulator and a process design. That is
+one system observed five times, and the transfer experiment inherits the same
+limit. BPIC 2018 is a different country, agency, domain and decade of software:
+EU direct-payment applications from German farmers, 43,809 cases, 2.5M events.
+
+Everything except the panel was held fixed — same fold routine, same five
+models, same grouped splits, same bootstrap, same unfitted weight vector.
+
+### Two construction decisions, both made before any model was fitted
+
+**A system account had to be excluded, and by a rule rather than by name.**
+Resource `727350` appears on 78% of all cases — 34,290 of 43,809, a hundred
+times the next busiest — with 193,100 `calculate` events against 477 `insert
+document`. It is a batch engine. Rather than hard-coding the ID, ownership now
+excludes any resource above a 0.20 case share; the rule caught 14 system
+accounts including seven the hand-written list had missed.
+
+**Lateness cannot be the failure measure in this process.** EU direct payments
+are an annual batch cycle, not a continuous stream, so cohorts move together and
+the statutory deadline becomes a calendar variable: five of eight quarters have
+*zero* within-quarter variance. Every duration rule tested behaves identically —
+share of unit-level variance explained by quarter alone:
+
+| candidate | rate | variance from quarter |
+|---|---|---|
+| missed statutory deadline | 0.283 | 0.87 |
+| throughput > 365 / 425 / 500 days | 0.31 / 0.28 / 0.22 | 0.87 / 0.87 / 0.81 |
+| slower than cohort p75 / p80 / p90 | 0.25 / 0.20 / 0.10 | 0.96 / 0.98 / 0.93 |
+| **at least one penalty** | **0.435** | **0.24** |
+
+Penalty incidence was the only measure varying between units *within* a period,
+so `slaBreachRate` maps to it. **No AUC was computed until the measure was
+fixed** — the selection is a variance decomposition of raw signals, not a search
+over what made a model look good.
+
+### The result
+
+326 unit-quarters, 76 units, 20.2% positive.
+
+| Model | Mean AUC | sd | Train AUC | Pooled OOF |
+|---|---|---|---|---|
+| GRIE (hand-specified) | 0.5622 | 0.098 | **0.5597** | 0.5596 |
+| GRIE (tuned) | 0.5556 | 0.100 | 0.5881 | 0.5307 |
+| Logistic regression | 0.5974 | 0.080 | 0.6595 | 0.5797 |
+| Gradient boosting | 0.6161 | 0.094 | 0.8015 | 0.5889 |
+| Random forest | 0.6135 | 0.074 | 0.8507 | 0.5948 |
+
+| Gap | Point | 95% interval |
+|---|---|---|
+| GRIE − gradient boosting | −0.0293 | [−0.1276, +0.0694] contains 0 |
+| GRIE − random forest | −0.0352 | [−0.1338, +0.0701] contains 0 |
+| GRIE − logistic regression | −0.0201 | [−0.1059, +0.0627] contains 0 |
+| GRIE − GRIE tuned | +0.0290 | [−0.0171, +0.0741] contains 0 |
+
+### How this must be described
+
+**Not "GRIE lost".** Every interval on every gap contains zero, and against a
+chance baseline GRIE, GRIE-tuned and logistic regression are all
+*indistinguishable from 0.5*. Gradient boosting and random forest clear it only
+barely (lower bounds 0.5032 and 0.5064). The panel is close to unlearnable for
+everything, and a panel that cannot rank models cannot be cited as a defeat any
+more than as a win.
+
+**The correct claim:** the interpretability advantage is demonstrated on one
+process family and **did not replicate** on a second, where the forecasting task
+proved close to unlearnable from these five signals. That is weaker than the
+drafted claim, and it is what the evidence supports.
+
+### The one thing that did replicate
+
+**GRIE does not overfit and the fitted models do.** GRIE's train and test AUC
+are 0.5597 and 0.5622 — identical, because nothing was fitted. Random forest
+trains to 0.8507 and tests at 0.6135; gradient boosting 0.8015 to 0.6161. A gap
+of 0.24 AUC between train and test is the fitted models learning 76 case workers
+rather than a governance process.
+
+**Tuning GRIE made it worse again** (+0.0290 for untuned over tuned), which is
+the third independent observation of that effect after the in-distribution and
+transfer arms. That much is consistent across all three panels.
+
+### Why the panel may be a weak test rather than a fair one
+
+Stated as a candidate explanation, not as a way to dismiss the result. The
+strongest feature correlates with the label at **+0.12**, against far more in
+the permit data. The analogue mapping is lossy: a payment agency's penalty flags
+are not a permit office's statutory clock, and three of GRIE's five factors have
+no close counterpart in an annual batch process. A reviewer is entitled to read
+this either as evidence against the claim or as evidence the analogue was too
+thin, and the paper should present both readings rather than pick one.
+
+Data: `research/results/bpic2018-interpretability.csv`.
