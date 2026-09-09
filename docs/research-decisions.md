@@ -695,3 +695,182 @@ this either as evidence against the claim or as evidence the analogue was too
 thin, and the paper should present both readings rather than pick one.
 
 Data: `research/results/bpic2018-interpretability.csv`.
+
+
+---
+
+## Does the advantage track target persistence?
+
+**Tested 10 September 2026. Hypothesis REFUTED, and the refutation is useful.**
+
+### The hypothesis
+
+BPIC 2015 has target autocorrelation +0.702 and GRIE wins; BPIC 2018 has +0.141
+and nothing clears chance. Same panel sizes, same class balance, same signals.
+The obvious reading is a scope condition: *the interpretability advantage grows
+with how persistent the target is.* Two points do not make a relationship, so it
+was tested as one — units from both panels pooled onto a single persistence axis
+and bucketed, 72 units with at least four periods, 525 rows.
+
+Absolute AUC rising with persistence would prove nothing: the label thresholds
+next period's breach rate and the current rate is a feature, so persistent units
+are mechanically easier. **The gap between models was the test.**
+
+### Result
+
+Two-way cut (36 units per bucket):
+
+| Bucket | Pooled autocorr | Rows | 2015 share | GRIE | GBM | Gap |
+|---|---|---|---|---|---|---|
+| low | +0.394 | 224 | 35% | 0.6297 | 0.5971 | **+0.0325** |
+| high | +0.588 | 301 | 59% | 0.7767 | 0.7482 | **+0.0286** |
+
+Three-way cut:
+
+| Bucket | Pooled autocorr | GRIE | GBM | Gap |
+|---|---|---|---|---|
+| 0 | −0.132 | 0.4733 | 0.4643 | +0.0090 |
+| 1 | +0.621 | 0.7813 | 0.7812 | +0.0002 |
+| 2 | +0.622 | 0.7650 | 0.7022 | +0.0628 |
+
+**The gap is flat.** It is +0.0325 in the low bucket and +0.0286 in the high one
+— if anything the wrong direction, and plainly noise either way. The hypothesis
+that the interpretability advantage widens with persistence is not supported and
+the paper must not claim it.
+
+Note also that the tercile cut is not what it appears: buckets 1 and 2 have
+pooled autocorrelations of +0.621 and +0.622. Ranking units by their own noisy
+four-point autocorrelation produced two buckets at the same persistence level, so
+a three-level reading of that table would be spurious. Both cuts are reported.
+
+### What the test did establish, which is more useful
+
+**Persistence governs feasibility, not the gap.** In the tercile bucket with
+*negative* autocorrelation every model sits at or below chance — GRIE 0.4733,
+gradient boosting 0.4643, logistic regression 0.3577. Nothing works there, for
+anyone. Above that floor all models work and GRIE holds a small, consistent
+lead.
+
+So the BPIC 2018 result is explained, but by a different mechanism than the one
+proposed: that panel is below the feasibility floor, not on the weak end of a
+gradient. Combined with the rich-feature ceiling test — 16 features instead of 5
+buys gradient boosting +0.021, from 0.616 to 0.637 — the panel is near its
+information limit, and no model choice recovers it.
+
+**GRIE's lead is more robust than the headline suggested.** It is ahead in every
+bucket including the low one, which is 65% BPIC 2018 rows. The single-panel 2018
+result had GRIE trailing; pooled with 2015 units at comparable persistence it
+does not. That is a caution against reading either single panel too hard.
+
+### What to claim
+
+*Governance risk forecasting has a feasibility floor set by how persistent unit
+performance is; below it no model of any class beats chance. Above it, a
+hand-specified interpretable model holds a small consistent advantage that does
+not vary with persistence.*
+
+The first clause is the scope condition the study needs. The second is weaker
+than the drafted claim and is what the pooled evidence supports.
+
+Data: `research/results/persistence.csv`, `persistence-2bucket.csv`.
+
+
+---
+
+## Explanation stability: would it have been the same explanation?
+
+**Run 10 September 2026. New result, and it inverts the usual framing.**
+
+### The unasked question
+
+`explanation_cost.py` asks whether an explanation is *concentrated*. This asks
+the other thing that decides whether an explanation is worth anything, and which
+the literature almost never measures: **is it stable?**
+
+A model is called interpretable if a human can read its parameters. That is a
+claim about form, not behaviour. A weighted sum whose largest factor is
+`slaBreachRate` on one sample and `repeatComplaintRate` on another is perfectly
+readable and useless as an explanation — the sentence shown to an officer would
+change because the training sample changed, not because anything about the
+sector changed.
+
+### Design
+
+Forty bootstrap resamples of the training **units** (not rows — resampling rows
+would split a unit's quarters across train and test and leak). Refit, then
+record each model's permutation-importance vector over the five signals. Across
+every pair of resamples: Spearman agreement of the vectors, how often the same
+factor leads, and how often attributions flip sign.
+
+Permutation importance is written out locally rather than taken from sklearn,
+because `InterpretableScorer` has no `fit`. One instrument for all five models
+matters — coefficients cover only the linear ones, impurity importance only the
+trees, and a per-model instrument would measure the instruments.
+
+Three of forty resamples were dropped: a bootstrap draw can leave the inner
+grouped CV with a single-class fold, every candidate scores nan, and
+`GridSearchCV` still returns a model having picked parameters arbitrarily.
+Counting an arbitrary model's attributions as a fitted model's disagreement
+would inflate exactly the quantity being measured.
+
+### Result
+
+| Model | Rank agreement | **Top-1 agreement** | Sign flips | AUC |
+|---|---|---|---|---|
+| GRIE (fixed weights) | 1.000 | 1.000 | 0.000 | 0.847 |
+| GRIE (tuned) | 0.728 | **0.480** | 0.193 | 0.845 |
+| Random forest | 0.702 | 0.754 | 0.240 | 0.811 |
+| Logistic regression | 0.640 | 0.847 | 0.178 | 0.830 |
+| Gradient boosting | 0.560 | **0.847** | 0.420 | 0.800 |
+
+Which factor leads the explanation, across resamples:
+
+| Model | Leading factor distribution |
+|---|---|
+| GRIE (tuned) | slaBreachRate 62%, repeatComplaintRate 32%, openComplaintLoad 5% |
+| Logistic regression | slaBreachRate 92%, repeatComplaintRate 8% |
+| Random forest | slaBreachRate 86%, repeatComplaintRate 11%, openComplaintLoad 3% |
+| Gradient boosting | slaBreachRate 92%, repeatComplaintRate 8% |
+
+### The finding
+
+**The most transparent fitted model has the least stable explanation.** Tuned
+GRIE — a five-term weighted sum, as readable as a model gets — names a different
+leading factor in **52%** of resample pairs. Gradient boosting, the least
+readable model in the comparison, names the same one **85%** of the time.
+
+The mechanism is visible in the distribution: tuning leaves GRIE's weights
+nearly tied between `slaBreachRate` and `repeatComplaintRate`, so a small change
+in the sample flips the ordering. The black boxes lock onto `slaBreachRate` and
+stay there.
+
+So **interpretability of form does not deliver interpretability in practice.**
+Transparency of structure and stability of explanation are separate properties,
+they are not correlated here, and the literature's habit of arguing about model
+classes measures only the first.
+
+**What buys stability is fixing the weights, not the model being a weighted
+sum.** GRIE-as-shipped scores 1.000 by construction and is drawn as a reference
+line rather than entered as a competitor — claiming a win for a model whose
+weights cannot move would be circular. The comparison that carries the result is
+tuned GRIE against the black boxes, both fitted, and the transparent one loses.
+
+One nuance worth reporting: gradient boosting has the **highest sign-flip rate**
+(0.420) despite the best top-1 agreement. It agrees on which factor leads while
+the minor factors reverse direction constantly — stable headline, unstable
+detail.
+
+### Why this matters to the paper
+
+It converts the shipped design decision from a limitation into a result. Fixed
+hand-chosen weights were previously defensible only as "we could not fit them
+well". They are now defensible as the *only* configuration tested that produces
+an explanation which does not move — at a cost of 0.002 AUC against tuned GRIE
+(0.847 vs 0.845).
+
+Paired with the explanation-cost curve, this gives two measured properties of
+explanation quality — concentration and stability — neither of which is captured
+by the model-class debate.
+
+Figure: `research/results/explanation-stability.png`.
+Data: `research/results/explanation-stability.csv`.
