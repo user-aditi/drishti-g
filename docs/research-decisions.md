@@ -874,3 +874,109 @@ by the model-class debate.
 
 Figure: `research/results/explanation-stability.png`.
 Data: `research/results/explanation-stability.csv`.
+
+
+---
+
+## Calibration, significance, and power
+
+**Run 10 September 2026. One correction to an earlier conclusion, one new result.**
+
+### The floor sweep on real data
+
+`explanation_cost.py` previously ran only on generated panels, which is the
+obvious thing to attack: the data is produced by the same process that defines
+the signals. The same sweep now runs on BPIC 2015, grouped by case worker, with
+the floor applied only to the tuner fitted on each training split.
+
+| Floor | Test AUC | HHI | Largest factor |
+|---|---|---|---|
+| free | 0.8391 | 0.235 | 31.4% |
+| 40% of uniform | 0.8450 | 0.219 | 28.7% |
+| 95% of uniform | 0.8437 | 0.219 | 26.5% |
+| *untuned (shipped)* | **0.8476** | — | — |
+
+**The floor costs nothing on real data — it pays +0.0046.** But the more
+important observation is the one that complicates the story: **unconstrained
+tuning did not collapse here.** The largest factor reaches only 31.4% without
+any floor at all, against 75.2% in the synthetic adversarial regime.
+
+So this arm does not confirm the synthetic result, it *bounds* it. The collapse
+pathology is real and documented — it happened in this system, at 0.998 weight —
+but it is data-dependent and did not occur on this panel. The honest framing is
+**the floor as free insurance**: it costs approximately nothing when unnecessary
+and prevents a single-factor explanation when it is. That is a weaker and more
+defensible claim than "the constraint has a measurable price everywhere".
+
+### Calibration: GRIE is badly calibrated and perfectly calibratable
+
+Every number in the study until now was AUC, which measures ranking only. An
+officer does not see a rank — they see a score of 78 and decide whether to send
+someone. BPIC 2015, all scores min-max rescaled so the comparison is about shape
+rather than units:
+
+| Model | Brier | ECE | **Brier (calibrated)** | **ECE (calibrated)** |
+|---|---|---|---|---|
+| GRIE (hand-specified) | 0.2223 | 0.3107 | **0.1207** | **0.0437** |
+| GRIE (tuned) | 0.2394 | 0.3337 | 0.1271 | 0.0792 |
+| Logistic regression | 0.1344 | 0.0527 | 0.1313 | 0.0478 |
+| Gradient boosting | 0.1506 | 0.1084 | 0.1320 | 0.0528 |
+| Random forest | 0.1502 | 0.1218 | 0.1278 | 0.0460 |
+
+Raw, GRIE is **the worst-calibrated model in the study** — mean predicted 0.527
+against an observed rate of 0.216. It is systematically overconfident, and a
+register that says 78 when the real failure probability is 22 will spend
+inspection budget and then credibility.
+
+After out-of-sample isotonic calibration it is **the best**, on both measures.
+Since AUC is invariant to monotone transforms, that improvement is free: the
+ranking, and therefore every accuracy result in this study, is unchanged.
+
+The finding is therefore precise: *GRIE's score carries the right ordering and
+the wrong units.* Its shape is correct — no monotone map could fix it otherwise
+— and it needs a calibration layer to be read as a probability. **This is a
+shipping recommendation, not just a paper result:** the product currently shows
+officers an uncalibrated 0-100 number, and the number should either be
+calibrated or explicitly labelled as a rank rather than a likelihood.
+
+### DeLong's test replaces "the interval excludes zero"
+
+The bootstrap intervals were sound but the paired comparison of two ROC curves
+on the same cases has a standard exact treatment. Implemented directly (Sun & Xu
+2014), on pooled out-of-fold scores:
+
+| Comparison | Gap | p | |
+|---|---|---|---|
+| GRIE − gradient boosting | +0.0553 | **0.0016** | significant |
+| GRIE − random forest | +0.0317 | **0.0094** | significant |
+| GRIE − logistic regression | +0.0261 | **0.0058** | significant |
+| GRIE − GRIE (tuned) | +0.0087 | 0.0717 | not significant |
+
+The BPIC 2015 result now carries p-values, not just intervals.
+
+### Power — and a correction to the BPIC 2018 conclusion
+
+Minimum detectable gap at 80% power, alpha 0.05:
+
+| Panel | n | positives | **MDG** |
+|---|---|---|---|
+| BPIC 2015 | 268 | 58 | 0.0702 |
+| BPIC 2018 | 326 | 66 | 0.0655 |
+
+**This changes what the 2018 arm is allowed to conclude.** The effect it was
+testing for — the BPIC 2015 gap of +0.0553 — is *smaller than the smallest gap
+that panel could have detected*. The observed gaps there (−0.020 to −0.035) are
+likewise well inside the undetectable range, and every DeLong p-value on 2018 is
+between 0.49 and 0.64.
+
+So the earlier phrasing, "the advantage did not replicate", overstates the
+evidence. The accurate statement is: **the BPIC 2018 panel was underpowered to
+detect an effect of the size observed on BPIC 2015, and returned a null that is
+uninformative about whether the effect exists.** Combined with the feasibility
+finding — that panel sits below the persistence floor where no model beats
+chance — the arm establishes a scope condition and nothing about the ordering.
+
+That is a materially different claim from a failed replication, and it is the
+one the paper must make.
+
+Data: `research/results/calibration.csv`, `explanation-cost-bpic.csv`.
