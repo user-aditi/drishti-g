@@ -16,6 +16,7 @@ import { authenticate, requireSuperAdmin } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
 import { RANK_JURISDICTION, RANK_LABEL, RANK_LEVEL, designationFor } from '../services/hierarchy.js'
+import * as org from '../services/orgTree.js'
 import { asyncHandler, conflict, notFound, unprocessable } from '../utils/http.js'
 import { publicPosting, publicUser } from '../utils/serialize.js'
 
@@ -368,6 +369,10 @@ orgRouter.post(
     }
 
     const designationTitle = await designationFor(prisma, body.departmentId ?? null, body.rank)
+    const orgUnitId = await org.resolveUnitForPosting(prisma, body)
+    if (orgUnitId == null) {
+      throw unprocessable('That posting does not correspond to any unit of the authority')
+    }
 
     const user = await prisma.$transaction(async (tx) => {
       const created = await tx.user.create({
@@ -386,6 +391,8 @@ orgRouter.post(
           departmentId: body.departmentId ?? null,
           rank: body.rank,
           level,
+          // Without this the appointment is invisible to routing and scope.
+          orgUnitId,
           zoneId: level === JurisdictionLevel.ZONE ? body.zoneId : null,
           circleId: level === JurisdictionLevel.CIRCLE ? body.circleId : null,
           sectorId: level === JurisdictionLevel.SECTOR ? body.sectorId : null,
@@ -453,6 +460,10 @@ orgRouter.post(
 
     const level = RANK_JURISDICTION[body.rank]
     const designationTitle = await designationFor(prisma, body.departmentId ?? null, body.rank)
+    const orgUnitId = await org.resolveUnitForPosting(prisma, body)
+    if (orgUnitId == null) {
+      throw unprocessable('That posting does not correspond to any unit of the authority')
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.posting.updateMany({
@@ -466,6 +477,8 @@ orgRouter.post(
           departmentId: body.departmentId ?? null,
           rank: body.rank,
           level,
+          // Without this the transfer is invisible to routing and scope.
+          orgUnitId,
           zoneId: level === JurisdictionLevel.ZONE ? body.zoneId : null,
           circleId: level === JurisdictionLevel.CIRCLE ? body.circleId : null,
           sectorId: level === JurisdictionLevel.SECTOR ? body.sectorId : null,

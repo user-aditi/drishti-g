@@ -188,11 +188,14 @@ adminRouter.get(
     const escalations = await prisma.escalation.findMany({
       where: { toUserId: req.user!.id },
       include: {
+        fromUnit: { select: { id: true, name: true, kindLabel: true, depth: true } },
+        toUnit: { select: { id: true, name: true, kindLabel: true, depth: true } },
         complaint: {
           include: {
             category: true,
             department: true,
             sector: true,
+            orgUnit: { select: { id: true, name: true, kindLabel: true, depth: true } },
             assignedOfficer: { select: { id: true, fullName: true } },
           },
         },
@@ -206,9 +209,12 @@ adminRouter.get(
         id: e.id,
         reason: e.reason,
         hoursOverdue: e.hoursOverdue,
-        fromRank: e.fromRank,
-        fromRankLabel: RANK_LABEL[e.fromRank],
-        toRank: e.toRank,
+        // An escalation is now a step between units, not between ranks. The
+        // rank columns are historical and no longer written.
+        fromUnit: e.fromUnit,
+        toUnit: e.toUnit,
+        fromLabel: e.fromUnit ? `${e.fromUnit.kindLabel} ${e.fromUnit.name}` : null,
+        toLabel: e.toUnit ? `${e.toUnit.kindLabel} ${e.toUnit.name}` : null,
         acknowledgedAt: e.acknowledgedAt,
         createdAt: e.createdAt,
         complaint: {
@@ -431,5 +437,98 @@ adminRouter.get(
   '/audit/verify',
   asyncHandler(async (_req, res) => {
     res.json(await audit.verifyChain(prisma))
+  }),
+)
+
+// ---------------------------------------------------------------------------
+// Scheduled work
+// ---------------------------------------------------------------------------
+//
+// These three run on a timer in production. They are exposed as endpoints so a
+// Super Admin can force one, and so the behaviour is inspectable during a demo
+// rather than only observable by waiting two days.
+
+/**
+ * Decide the work orders whose citizens never answered.
+ *
+ * Strong proof with a silent resident closes on its own; weak proof with a
+ * silent resident is the case that genuinely needs an officer. Without this
+ * running, a citizen who simply never opens the app leaves the job in limbo.
+ */
+adminRouter.post(
+  '/sweeps/verification',
+  requireSuperAdmin,
+  asyncHandler(async (_req, res) => {
+    const { sweepSilentCitizens } = await import('../services/verification.js')
+    res.json(await sweepSilentCitizens(prisma))
+  }),
+)
+
+/**
+ * Group the open register.
+ *
+ * Clustering at filing time only compares against what already exists, so two
+ * near-identical complaints arriving minutes apart can each find nothing. This
+ * reconsiders everything ungrouped.
+ */
+adminRouter.post(
+  '/sweeps/clustering',
+  requireSuperAdmin,
+  asyncHandler(async (_req, res) => {
+    const { clusterOpenComplaints } = await import('../services/clustering.js')
+    const { applyPriority } = await import('../services/priority.js')
+
+    const result = await clusterOpenComplaints(prisma)
+
+    // Grouping changes how many households a complaint affects, which changes
+    // its urgency — so everything now in a group is rescored.
+    const grouped = await prisma.complaint.findMany({
+      where: { clusterId: { not: null }, status: { in: OPEN_STATUSES } },
+      select: { id: true },
+    })
+    for (const c of grouped) await applyPriority(prisma, c.id)
+
+    res.json({ ...result, rescored: grouped.length })
+  }),
+)
+
+/**
+ * Ask the autonomy gate what it would do with every open complaint.
+ *
+ * Advisory only — the gate executes nothing, because the calibration found no
+ * confidence level at which any status transition may be made unattended. What
+ * this produces is a review queue ordered by how uncertain the system is, and a
+ * record against which a future calibration can be argued.
+ */
+adminRouter.post(
+  '/sweeps/autonomy',
+  requireSuperAdmin,
+  asyncHandler(async (_req, res) => {
+    const { sweepAutonomy } = await import('../services/autonomy.js')
+    res.json(await sweepAutonomy(prisma))
+  }),
+)
+
+/** Rescore every open complaint. For after a weight or severity change. */
+adminRouter.post(
+  '/sweeps/priority',
+  requireSuperAdmin,
+  asyncHandler(async (_req, res) => {
+    const { applyPriority } = await import('../services/priority.js')
+
+    const open = await prisma.complaint.findMany({
+      where: { status: { in: OPEN_STATUSES } },
+      select: { id: true, priority: true },
+    })
+
+    const moved: { id: number; from: string; to: string; score: number }[] = []
+    for (const c of open) {
+      const result = await applyPriority(prisma, c.id)
+      if (result.priority !== c.priority) {
+        moved.push({ id: c.id, from: c.priority, to: result.priority, score: result.score })
+      }
+    }
+
+    res.json({ rescored: open.length, moved: moved.length, changes: moved.slice(0, 50) })
   }),
 )

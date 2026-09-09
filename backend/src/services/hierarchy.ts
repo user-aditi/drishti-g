@@ -7,6 +7,7 @@
  */
 import { JurisdictionLevel, Rank } from '@prisma/client'
 import type { Prisma, PrismaClient } from '@prisma/client'
+import * as org from './orgTree.js'
 
 export type Db = PrismaClient | Prisma.TransactionClient
 
@@ -82,237 +83,95 @@ export const isAuthorityWide = (rank: Rank): boolean =>
 
 // ---------------------------------------------------------------------------
 // Jurisdiction
+//
+// These now delegate to the org tree. They keep their old signatures so every
+// caller stays put, but the answers come from `orgTree` — there is one source
+// of truth for "who is responsible for what", and it is the tree.
+//
+// The legacy sector-shaped arguments are still accepted because complaints
+// carry both columns during the migration; whichever is supplied, the check is
+// performed against the tree.
 // ---------------------------------------------------------------------------
 
-export interface SectorContext {
-  sectorId: number
-  sectorNumber: number
-  circleId: number
-  zoneId: number
-}
-
-/** Resolve a sector to its circle and zone — the spine of every lookup here. */
-export async function sectorContext(db: Db, sectorId: number): Promise<SectorContext | null> {
-  const sector = await db.sector.findUnique({
-    where: { id: sectorId },
-    include: { circle: true },
-  })
+/** Map a legacy sector id to its unit, or null if it has none. */
+async function unitForSector(db: Db, sectorId: number): Promise<number | null> {
+  const sector = await db.sector.findUnique({ where: { id: sectorId } })
   if (!sector) return null
-  return {
-    sectorId: sector.id,
-    sectorNumber: sector.number,
-    circleId: sector.circleId,
-    zoneId: sector.circle.zoneId,
-  }
+  const unit = await db.orgUnit.findUnique({ where: { code: `SEC-${sector.number}` } })
+  return unit?.id ?? null
 }
 
 /**
  * Every sector a person's postings cover.
  *
- * An authority-wide posting returns null, meaning "no geographic limit" — the
- * caller should skip sector filtering entirely rather than build a list of the
- * whole city.
+ * Derived from the tree and then mapped back to legacy sector ids, so callers
+ * still filtering complaints by `sectorId` get an answer consistent with
+ * everything else. Null means "no geographic limit".
  */
 export async function sectorsInScope(db: Db, userId: number): Promise<number[] | null> {
-  const postings = await db.posting.findMany({
-    where: { userId, endedAt: null },
+  const units = await org.unitsInScope(db, userId)
+  if (units === null) return null
+  if (units.length === 0) return []
+
+  const rows = await db.orgUnit.findMany({
+    where: { id: { in: units }, code: { startsWith: 'SEC-' } },
+    select: { code: true },
   })
-  if (postings.length === 0) return []
-  if (postings.some((p) => p.level === JurisdictionLevel.AUTHORITY)) return null
+  const numbers = rows
+    .map((r) => Number(r.code.slice(4)))
+    .filter((n) => Number.isFinite(n))
+  if (numbers.length === 0) return []
 
-  const zoneIds = postings.map((p) => p.zoneId).filter((v): v is number => v != null)
-  const circleIds = postings.map((p) => p.circleId).filter((v): v is number => v != null)
-  const sectorIds = postings.map((p) => p.sectorId).filter((v): v is number => v != null)
-
-  const covered = await db.sector.findMany({
-    where: {
-      OR: [
-        { id: { in: sectorIds } },
-        { circleId: { in: circleIds } },
-        { circle: { zoneId: { in: zoneIds } } },
-      ],
-    },
+  const sectors = await db.sector.findMany({
+    where: { number: { in: numbers } },
     select: { id: true },
   })
-
-  return [...new Set(covered.map((s) => s.id))]
+  return sectors.map((s) => s.id)
 }
 
-/** Departments a person's postings cover; null means all of them. */
+/**
+ * Departments a person's postings cover; null means all of them.
+ *
+ * A posting with no department is the cross-departmental one — the CEO and the
+ * Super Admin. Sitting at the top of the tree is NOT the same thing: a General
+ * Manager runs one department across the whole city and has no business reading
+ * another department's complaints.
+ */
 export async function departmentsInScope(db: Db, userId: number): Promise<number[] | null> {
   const postings = await db.posting.findMany({
     where: { userId, endedAt: null },
-    select: { departmentId: true, rank: true },
+    select: { departmentId: true },
   })
-  if (postings.some((p) => isAuthorityWide(p.rank))) return null
-  const ids = postings.map((p) => p.departmentId).filter((v): v is number => v != null)
-  return [...new Set(ids)]
-}
-
-// ---------------------------------------------------------------------------
-// Finding the right person
-// ---------------------------------------------------------------------------
-
-export interface OfficerMatch {
-  userId: number
-  fullName: string
-  rank: Rank
-  designationTitle: string | null
-  openLoad: number
+  if (postings.length === 0) return []
+  if (postings.some((p) => p.departmentId == null)) return null
+  return [...new Set(postings.map((p) => p.departmentId!))]
 }
 
 /**
- * The officer of a given rank responsible for a sector in a department.
+ * Can `actor` act on something in this department and place?
  *
- * Walks outward from the sector to the circle to the zone, because that is how
- * a rank's jurisdiction is stored: a Circle Officer is posted to a circle, not
- * to each of its sectors.
- *
- * When several people hold the post, the least-loaded one wins and ties break
- * on id — which is what keeps routing reproducible.
- */
-export async function findResponsibleOfficer(
-  db: Db,
-  params: { departmentId: number; sectorId: number; rank: Rank },
-): Promise<OfficerMatch | null> {
-  const context = await sectorContext(db, params.sectorId)
-  if (!context) return null
-
-  const scope: Prisma.PostingWhereInput =
-    params.rank === Rank.SECTION_OFFICER || params.rank === Rank.FIELD_WORKER
-      ? { sectorId: context.sectorId }
-      : params.rank === Rank.CIRCLE_OFFICER
-        ? { circleId: context.circleId }
-        : params.rank === Rank.ZONAL_OFFICER
-          ? { zoneId: context.zoneId }
-          : { level: JurisdictionLevel.AUTHORITY }
-
-  const postings = await db.posting.findMany({
-    where: {
-      departmentId: params.departmentId,
-      rank: params.rank,
-      endedAt: null,
-      user: { isActive: true },
-      ...scope,
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          fullName: true,
-          _count: {
-            select: {
-              ownedComplaints: {
-                where: {
-                  status: {
-                    in: ['ROUTED', 'ASSIGNED', 'IN_PROGRESS', 'AWAITING_VERIFICATION'],
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    orderBy: { userId: 'asc' },
-  })
-
-  if (postings.length === 0) return null
-
-  const best = postings.reduce((a, b) =>
-    b.user._count.ownedComplaints < a.user._count.ownedComplaints ? b : a,
-  )
-
-  return {
-    userId: best.user.id,
-    fullName: best.user.fullName,
-    rank: best.rank,
-    designationTitle: best.designationTitle,
-    openLoad: best.user._count.ownedComplaints,
-  }
-}
-
-export interface WorkerMatch {
-  userId: number
-  fullName: string
-  trade: string | null
-  designationTitle: string | null
-  employeeCode: string | null
-  activeJobs: number
-}
-
-/**
- * The field workers a Section Officer can put on a job.
- *
- * Scoped to the officer's own sector and department, optionally narrowed to the
- * trade the category calls for — a lineman is not sent to clear a drain.
- */
-export async function workersForSector(
-  db: Db,
-  params: { departmentId: number; sectorId: number; trade?: string | null },
-): Promise<WorkerMatch[]> {
-  const postings = await db.posting.findMany({
-    where: {
-      departmentId: params.departmentId,
-      sectorId: params.sectorId,
-      rank: Rank.FIELD_WORKER,
-      endedAt: null,
-      user: { isActive: true },
-      ...(params.trade ? { trade: params.trade as never } : {}),
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          fullName: true,
-          _count: {
-            select: {
-              workerComplaints: {
-                where: { status: { in: ['IN_PROGRESS', 'AWAITING_VERIFICATION'] } },
-              },
-            },
-          },
-        },
-      },
-    },
-    orderBy: { userId: 'asc' },
-  })
-
-  return postings
-    .map((p) => ({
-      userId: p.user.id,
-      fullName: p.user.fullName,
-      trade: p.trade,
-      designationTitle: p.designationTitle,
-      employeeCode: p.employeeCode,
-      activeJobs: p.user._count.workerComplaints,
-    }))
-    .sort((a, b) => a.activeJobs - b.activeJobs || a.userId - b.userId)
-}
-
-/**
- * Can `actor` act on a complaint in this department and sector?
- *
- * Enforced server-side on every write. Seniority alone is not enough — an
- * Executive Engineer in Zone II has no business closing a complaint in Zone I.
+ * Enforced server-side on every write. Seniority alone is never enough — an
+ * officer in one zone has no business acting in another, however senior.
  */
 export async function hasJurisdiction(
   db: Db,
   actor: { id: number; rank: Rank },
-  target: { departmentId: number | null; sectorId: number | null },
+  target: { departmentId: number | null; sectorId?: number | null; orgUnitId?: number | null },
 ): Promise<boolean> {
-  if (isAuthorityWide(actor.rank)) return true
-
   const departments = await departmentsInScope(db, actor.id)
   if (departments !== null) {
     if (target.departmentId == null) return false
     if (!departments.includes(target.departmentId)) return false
   }
 
-  const sectors = await sectorsInScope(db, actor.id)
-  if (sectors === null) return true
-  if (target.sectorId == null) return false
-  return sectors.includes(target.sectorId)
+  const units = await org.unitsInScope(db, actor.id)
+  if (units === null) return true
+
+  const unitId =
+    target.orgUnitId ?? (target.sectorId != null ? await unitForSector(db, target.sectorId) : null)
+  if (unitId == null) return false
+
+  return units.includes(unitId)
 }
 
 /** The designation title for a rank in a department, falling back to the generic one. */

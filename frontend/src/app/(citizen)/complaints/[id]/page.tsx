@@ -1,19 +1,22 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, MapPin } from 'lucide-react'
+import { ArrowLeft, MapPin, Users } from 'lucide-react'
 import { requireUser } from '@/lib/auth'
 import { serverFetch } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { SupportButton } from '@/components/citizen/support-button'
 import { EscalationBadge, PriorityBadge, StatusBadge } from '@/components/shared/status-badge'
 import { SectionHeading } from '@/components/shared/page-header'
 import { Timeline } from '@/components/shared/timeline'
-import { isOpen, isSeniorOfficer } from '@/lib/constants'
-import { deadlineLabel, formatDateTime, relativeTime } from '@/lib/format'
+import { isOfficer, isOpen, isSeniorOfficer } from '@/lib/constants'
+import { deadlineLabel, formatDateTime, initials, relativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { ComplaintDetail } from '@/types'
 import { ComplaintActionsClient } from './client'
+import { ConfirmWorkPanel } from './confirm'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,6 +72,12 @@ export default async function ComplaintDetailPage({ params }: { params: { id: st
                                 <h1 className="mt-1 text-xl font-bold leading-tight">{complaint.title}</h1>
                             </div>
                             <div className="flex shrink-0 flex-wrap gap-2">
+                                {complaint.isCommunity && (
+                                    <Badge variant="info">
+                                        <Users className="h-3 w-3" aria-hidden />
+                                        Community issue
+                                    </Badge>
+                                )}
                                 <StatusBadge status={complaint.status} />
                                 <PriorityBadge priority={complaint.priority} />
                                 <EscalationBadge level={complaint.escalationLevel} />
@@ -101,8 +110,67 @@ export default async function ComplaintDetailPage({ params }: { params: { id: st
                         )}
                     </Card>
 
+                    {complaint.awaitingMyConfirmation && complaint.workProof && (
+                        <ConfirmWorkPanel complaintId={complaint.id} proof={complaint.workProof} />
+                    )}
+
+                    {complaint.citizenConfirmed === false && (
+                        <p className="rounded-xl border border-[color:var(--warning-border)] bg-[color:var(--warning-bg)] px-4 py-3 text-sm text-[color:var(--warning-fg)]">
+                            You told us this was not actually fixed, so it went back to the officer
+                            responsible with your photo attached. You will be asked again when the
+                            crew reports it done.
+                        </p>
+                    )}
+
+                    {complaint.isCommunity && (
+                        <Card className="p-5">
+                            <SectionHeading
+                                title="Backed by the neighbourhood"
+                                description="This was raised as a community issue, so residents of the sector can add their names to it. Enough support raises how urgently the authority treats it."
+                            />
+
+                            <SupportButton
+                                complaintId={complaint.id}
+                                supporters={complaint.supporters}
+                                hasSupported={complaint.viewerHasSupported}
+                                canSupport={complaint.viewerCanSupport}
+                                isAuthor={isOwner}
+                                nextThreshold={complaint.nextThreshold}
+                                currentPriority={complaint.priority}
+                                showEligibilityHint={!isOfficer(user.rank)}
+                                size="default"
+                            />
+
+                            {complaint.supportList.length > 0 && (
+                                <ul className="mt-4 space-y-2 border-t border-[color:var(--border)] pt-4">
+                                    {complaint.supportList.map((s) => (
+                                        <li key={s.id} className="flex items-start gap-2.5 text-sm">
+                                            <span
+                                                aria-hidden
+                                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[color:var(--accent)] text-[10px] font-semibold text-[color:var(--accent-foreground)]"
+                                            >
+                                                {initials(s.fullName)}
+                                            </span>
+                                            <span className="min-w-0">
+                                                <span className="font-medium">{s.fullName}</span>
+                                                <span className="ml-2 text-xs text-[color:var(--muted-foreground)]">
+                                                    {relativeTime(s.createdAt)}
+                                                </span>
+                                                {s.note && (
+                                                    <span className="block text-xs text-[color:var(--muted-foreground)]">
+                                                        “{s.note}”
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </Card>
+                    )}
+
                     {complaint.escalations.length > 0 && (
-                        <Card className="border-purple-200 bg-purple-50/40 p-5">
+                        <Card className="border-[color:var(--escalate-border)] bg-[color:var(--escalate-bg)]/40 p-5">
                             <SectionHeading
                                 title="Escalation history"
                                 description="Each time this passed a deadline it became a more senior officer's responsibility."
@@ -111,8 +179,9 @@ export default async function ComplaintDetailPage({ params }: { params: { id: st
                                 {complaint.escalations.map((e) => (
                                     <li key={e.id} className="text-sm">
                                         <span className="font-medium">
-                                            {e.fromRank.replace(/_/g, ' ').toLowerCase()} →{' '}
-                                            {e.toRank.replace(/_/g, ' ').toLowerCase()}
+                                            {e.fromLabel && e.toLabel
+                                                ? `${e.fromLabel} → ${e.toLabel}`
+                                                : 'Passed to a more senior officer'}
                                         </span>
                                         {e.toUser && (
                                             <span className="text-[color:var(--muted-foreground)]">
@@ -185,7 +254,7 @@ export default async function ComplaintDetailPage({ params }: { params: { id: st
                                     <dt className="text-[color:var(--muted-foreground)]">Officer responsible</dt>
                                     <dd className="mt-0.5 font-medium">
                                         {complaint.assignedOfficer?.fullName ?? (
-                                            <span className="text-amber-600">Awaiting posting</span>
+                                            <span className="text-[color:var(--warning)]">Awaiting posting</span>
                                         )}
                                     </dd>
                                 </div>
@@ -225,9 +294,9 @@ export default async function ComplaintDetailPage({ params }: { params: { id: st
                                         className={cn(
                                             'mt-0.5 font-medium',
                                             deadline.tone === 'overdue'
-                                                ? 'text-red-600'
+                                                ? 'text-[color:var(--error)]'
                                                 : deadline.tone === 'urgent'
-                                                  ? 'text-amber-600'
+                                                  ? 'text-[color:var(--warning)]'
                                                   : '',
                                         )}
                                     >
@@ -236,6 +305,31 @@ export default async function ComplaintDetailPage({ params }: { params: { id: st
                                             <span className="ml-1 font-normal">({deadline.text})</span>
                                         )}
                                     </dd>
+                                    {complaint.slaEstimate && (
+                                        /*
+                                         * What usually happens, next to what was promised.
+                                         *
+                                         * The deadline above is a p90 — a time this area has
+                                         * historically met nine cases in ten. On its own that reads
+                                         * as pessimism, because most complaints finish well inside
+                                         * it. This is the sentence a resident actually wanted, and
+                                         * the API decides its wording from how specific the
+                                         * evidence is, so the page cannot overclaim on its own.
+                                         */
+                                        <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                                            {complaint.slaEstimate.sentence}
+                                            {complaint.slaEstimate.support > 0 && (
+                                                <span className="text-[color:var(--subtle-foreground)]">
+                                                    {' '}
+                                                    Based on {complaint.slaEstimate.support} similar{' '}
+                                                    {complaint.slaEstimate.support === 1
+                                                        ? 'complaint'
+                                                        : 'complaints'}
+                                                    .
+                                                </span>
+                                            )}
+                                        </p>
+                                    )}
                                 </div>
                                 {complaint.resolvedAt && (
                                     <div>

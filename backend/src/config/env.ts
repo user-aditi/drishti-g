@@ -23,9 +23,6 @@ const schema = z.object({
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
 
-  NEO4J_URI: z.string().default('bolt://localhost:7687'),
-  NEO4J_USER: z.string().default('neo4j'),
-  NEO4J_PASSWORD: z.string().default('drishti_dev_password'),
 
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   ACCESS_TOKEN_TTL: z.string().default('1h'),
@@ -34,6 +31,9 @@ const schema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   UPLOAD_DIR: z.string().default('uploads'),
   PUBLIC_URL: z.string().default('http://localhost:4000'),
+  /// Where the browser app lives. Work-order QR codes point here, not at the
+  /// API — a worker scanning a slip needs the upload page, not JSON.
+  APP_URL: z.string().default('http://localhost:3000'),
 })
 
 const parsed = schema.safeParse(process.env)

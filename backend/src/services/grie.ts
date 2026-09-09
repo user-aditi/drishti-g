@@ -67,6 +67,19 @@ const pct = (raw: number) => `${Math.round(raw * 100)}%`
 // --- Calibration -------------------------------------------------------------
 
 /**
+ * The entity types GRIE still scores.
+ *
+ * PROJECT and CONTRACTOR are absent by decision rather than by oversight. Works
+ * management — tenders, budget lines, milestone schedules — is a larger product
+ * than this one and was never fed anything but seed rows here, so scoring it was
+ * demonstrating a mechanism rather than making a claim about any real firm. The
+ * enum keeps both values because historical `RiskScore` rows still carry them.
+ *
+ * See docs/real-world-readiness.md, Part III.
+ */
+export type ScorableEntityType = Exclude<RiskEntityType, 'PROJECT' | 'CONTRACTOR'>
+
+/**
  * How many open complaints reads as "completely saturated", per scope.
  *
  * Scope-aware by necessity. A single sector is in serious trouble at 25 open
@@ -74,13 +87,17 @@ const pct = (raw: number) => `${Math.round(raw * 100)}%`
  * whereas a zone aggregating six sectors would hit 25 on a good day. One shared
  * cap made the factor inert at sector level and hair-trigger at zone level.
  */
-export const LOAD_CAP: Record<RiskEntityType, number> = {
+export const LOAD_CAP: Record<ScorableEntityType, number> = {
+    // A unit's cap is not fixed: it scales with how many ground-floor units sit
+    // beneath it, so the factor is neither inert at the top of the tree nor
+    // hair-trigger at the bottom. This value is the single-sector default, used
+    // when no computed cap is supplied.
+    [RiskEntityType.ORG_UNIT]: 25,
+    [RiskEntityType.DEPARTMENT]: 250,
+    // Historical rows only.
     [RiskEntityType.SECTOR]: 25,
     [RiskEntityType.CIRCLE]: 70,
     [RiskEntityType.ZONE]: 180,
-    [RiskEntityType.DEPARTMENT]: 250,
-    [RiskEntityType.PROJECT]: 20,
-    [RiskEntityType.CONTRACTOR]: 20,
 }
 
 /**
@@ -116,13 +133,17 @@ export const AREA_FACTORS: Factor[] = [
     },
     {
         key: 'repeatComplaintRate',
-        label: 'Repeat complaints',
+        label: 'Recurring issues',
         weight: 0.27,
         curve: { kind: 'proportion' },
+        // "Repeat" means the repair did not hold: an issue of this kind was
+        // closed here and then reported again. Simultaneous reports of one
+        // problem are duplicates, not recurrence, and do not count — see
+        // riskSignals.ts for why the looser definition had to go.
         describe: (raw) =>
             raw > 0
-                ? `${pct(raw)} of complaints here repeat an issue already reported in this area.`
-                : 'No repeated complaints in this area.',
+                ? `${pct(raw)} of complaints here report an issue this area had already resolved once.`
+                : 'Nothing resolved here has been reported again.',
     },
     {
         key: 'escalationRate',
@@ -156,101 +177,24 @@ export const AREA_FACTORS: Factor[] = [
     },
 ]
 
-export const PROJECT_FACTORS: Factor[] = [
-    {
-        key: 'budgetOverrun',
-        label: 'Budget overrun',
-        weight: 0.3,
-        curve: { kind: 'linear', cap: 0.5 }, // 50% over budget reads as maximum risk
-        describe: (raw) =>
-            raw > 0
-                ? `Spending is ${pct(raw)} over the allocated budget.`
-                : 'Spending is within the allocated budget.',
-    },
-    {
-        key: 'scheduleDelayDays',
-        label: 'Schedule delay',
-        weight: 0.25,
-        curve: { kind: 'linear', cap: 180 }, // 180 days late reads as maximum risk
-        describe: (raw) =>
-            raw > 0
-                ? `Running ${Math.round(raw)} days past the planned completion date.`
-                : 'On or ahead of schedule.',
-    },
-    {
-        key: 'inspectionFailureRate',
-        label: 'Inspection failures',
-        weight: 0.25,
-        curve: { kind: 'proportion' },
-        describe: (raw) =>
-            raw > 0
-                ? `${pct(raw)} of site inspections were failed.`
-                : 'No failed inspections on record.',
-    },
-    {
-        key: 'linkedComplaints',
-        label: 'Linked complaints',
-        weight: 0.2,
-        curve: { kind: 'linear', cap: 20 },
-        describe: (raw) =>
-            raw > 0
-                ? `${Math.round(raw)} citizen complaints are linked to this project's sector.`
-                : 'No linked citizen complaints.',
-    },
-]
-
-export const CONTRACTOR_FACTORS: Factor[] = [
-    {
-        key: 'avgProjectRisk',
-        label: 'Average project risk',
-        weight: 0.4,
-        curve: { kind: 'identity' },
-        describe: (raw) => `Their projects average a risk score of ${Math.round(raw)}/100.`,
-    },
-    {
-        key: 'lateDeliveryRate',
-        label: 'Late delivery history',
-        weight: 0.3,
-        curve: { kind: 'proportion' },
-        describe: (raw) =>
-            raw > 0
-                ? `${pct(raw)} of their completed projects finished late.`
-                : 'No history of late delivery.',
-    },
-    {
-        key: 'inspectionFailureRate',
-        label: 'Inspection failures',
-        weight: 0.2,
-        curve: { kind: 'proportion' },
-        describe: (raw) =>
-            raw > 0
-                ? `${pct(raw)} of inspections across their work were failed.`
-                : 'No failed inspections across their work.',
-    },
-    {
-        key: 'isBlacklisted',
-        label: 'Blacklisting',
-        weight: 0.1,
-        curve: { kind: 'boolean' },
-        describe: (raw) => (raw ? 'This contractor is currently blacklisted.' : 'Not blacklisted.'),
-    },
-]
-
 /** The area factor set with its load cap set for this scope. */
-function areaFactorsFor(entityType: RiskEntityType): Factor[] {
+function areaFactorsFor(entityType: ScorableEntityType): Factor[] {
     const cap = LOAD_CAP[entityType]
     return AREA_FACTORS.map((f) =>
         f.key === 'openComplaintLoad' ? { ...f, curve: { kind: 'linear' as const, cap } } : f,
     )
 }
 
-export const FACTOR_SETS: Record<RiskEntityType, Factor[]> = {
+export const FACTOR_SETS: Record<ScorableEntityType, Factor[]> = {
+    // Scoring an area does not change with its depth, so one factor set covers
+    // every unit of the tree. What does change is the saturation cap, which the
+    // caller supplies per unit — see `scoreEntity`'s `loadCap`.
+    [RiskEntityType.ORG_UNIT]: areaFactorsFor(RiskEntityType.ORG_UNIT),
+    [RiskEntityType.DEPARTMENT]: areaFactorsFor(RiskEntityType.DEPARTMENT),
+    // Historical rows only; the three tiers are one tree now.
     [RiskEntityType.SECTOR]: areaFactorsFor(RiskEntityType.SECTOR),
     [RiskEntityType.CIRCLE]: areaFactorsFor(RiskEntityType.CIRCLE),
     [RiskEntityType.ZONE]: areaFactorsFor(RiskEntityType.ZONE),
-    [RiskEntityType.DEPARTMENT]: areaFactorsFor(RiskEntityType.DEPARTMENT),
-    [RiskEntityType.PROJECT]: PROJECT_FACTORS,
-    [RiskEntityType.CONTRACTOR]: CONTRACTOR_FACTORS,
 }
 
 // --- Scoring -----------------------------------------------------------------
@@ -266,7 +210,7 @@ export interface FactorBreakdown {
 }
 
 export interface ScoreResult {
-    entityType: RiskEntityType
+    entityType: ScorableEntityType
     entityId: number
     score: number
     band: RiskBand
@@ -293,17 +237,28 @@ export type Signals = Record<string, number | null | undefined>
  *
  * `overrideWeights` lets the tuning experiment score with a candidate weight
  * set without mutating the production model.
+ *
+ * `loadCap` is how many open complaints read as complete saturation for this
+ * particular entity. It is a parameter rather than a constant because a zone
+ * covering six sectors is not in the same trouble at 25 open complaints that a
+ * single sector is — the caller computes it from how much ground the unit
+ * covers, and omitting it falls back to the scope's default in `LOAD_CAP`.
  */
 export function scoreEntity(
-    entityType: RiskEntityType,
+    entityType: ScorableEntityType,
     entityId: number,
     signals: Signals,
     overrideWeights?: Record<string, number>,
+    loadCap?: number,
 ): ScoreResult {
     const factors: FactorBreakdown[] = []
     let total = 0
 
-    for (const factor of FACTOR_SETS[entityType]) {
+    for (const base of FACTOR_SETS[entityType]) {
+        const factor =
+            loadCap != null && base.key === 'openComplaintLoad'
+                ? { ...base, curve: { kind: 'linear' as const, cap: loadCap } }
+                : base
         const weight = overrideWeights?.[factor.key] ?? factor.weight
         const raw = Number(signals[factor.key] ?? 0) || 0
         const normalised = applyCurve(factor.curve, raw)

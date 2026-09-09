@@ -7,13 +7,25 @@ import { apiClient } from '@/lib/api-client'
 import { messageFrom } from '@/lib/api-error'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { ErrorBanner, SectionHeading } from '@/components/shared/page-header'
+import { Count, DataTable, RowTitle, type Column } from '@/components/shared/data-table'
+import { Toolbar } from '@/components/shared/controls'
+import { ErrorBanner } from '@/components/shared/page-header'
 import type { Department } from '@/types'
 
+/**
+ * The department register.
+ *
+ * This was a grid of cards, which made the one question the page exists to
+ * answer — *which departments can actually take a complaint, and are they
+ * staffed enough to* — into a scavenger hunt across nine tiles. As a register
+ * the answer reads straight down two columns, live and planned departments sort
+ * against each other, and the staff count that decides whether a department can
+ * go live sits next to the switch that puts it live.
+ */
 export function DepartmentsAdminClient({ departments }: { departments: Department[] }) {
     const router = useRouter()
     const [busyId, setBusyId] = useState<number | null>(null)
+    const [search, setSearch] = useState('')
     const [error, setError] = useState<string | null>(null)
 
     async function toggleStatus(dept: Department) {
@@ -34,120 +46,112 @@ export function DepartmentsAdminClient({ departments }: { departments: Departmen
         }
     }
 
-    const live = departments.filter((d) => d.status === 'ACTIVE')
-    const planned = departments.filter((d) => d.status === 'COMING_SOON')
+    const columns: Column<Department>[] = [
+        {
+            key: 'name',
+            header: 'Department',
+            value: (d) => `${d.name} ${d.nameHi ?? ''} ${d.description ?? ''}`,
+            cell: (d) => (
+                <div className="flex items-start gap-3">
+                    <span
+                        aria-hidden
+                        className={d.status === 'ACTIVE' ? 'text-xl' : 'text-xl opacity-50'}
+                    >
+                        {d.icon}
+                    </span>
+                    <RowTitle hint={d.nameHi ?? undefined}>{d.name}</RowTitle>
+                </div>
+            ),
+        },
+        {
+            key: 'status',
+            header: 'Status',
+            width: 'w-32',
+            value: (d) => (d.status === 'ACTIVE' ? 'Live' : 'Coming soon'),
+            cell: (d) =>
+                d.status === 'ACTIVE' ? (
+                    <Badge variant="success">Live</Badge>
+                ) : (
+                    <Badge variant="neutral">Coming soon</Badge>
+                ),
+        },
+        {
+            key: 'scope',
+            header: 'What it covers',
+            secondary: true,
+            value: (d) => d.description ?? null,
+            cell: (d) => (
+                <p className="line-clamp-2 max-w-md text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                    {d.status === 'ACTIVE' ? d.description : (d.roadmapNote ?? d.description)}
+                </p>
+            ),
+        },
+        {
+            key: 'categories',
+            header: 'Issue types',
+            align: 'right',
+            secondary: true,
+            value: (d) => d._count?.categories ?? 0,
+            cell: (d) => <Count value={d._count?.categories ?? 0} />,
+        },
+        {
+            key: 'postings',
+            header: 'Staff',
+            align: 'right',
+            value: (d) => d._count?.postings ?? 0,
+            cell: (d) => {
+                const posted = d._count?.postings ?? 0
+                // A live department with nobody in it routes complaints to
+                // nobody, which is the failure this register exists to catch.
+                return posted === 0 && d.status === 'ACTIVE' ? (
+                    <Badge variant="danger">Nobody</Badge>
+                ) : (
+                    <Count value={posted} />
+                )
+            },
+        },
+        {
+            key: 'complaints',
+            header: 'Complaints',
+            align: 'right',
+            value: (d) => d._count?.complaints ?? 0,
+            cell: (d) => <Count value={d._count?.complaints ?? 0} />,
+        },
+        {
+            key: 'actions',
+            header: '',
+            width: 'w-32',
+            align: 'right',
+            cell: (d) => (
+                <Button
+                    size="sm"
+                    variant={d.status === 'ACTIVE' ? 'outline' : 'default'}
+                    onClick={() => void toggleStatus(d)}
+                    disabled={busyId === d.id}
+                >
+                    {busyId === d.id && <Loader2 className="animate-spin" />}
+                    {d.status === 'ACTIVE' ? 'Take offline' : 'Make live'}
+                </Button>
+            ),
+        },
+    ]
 
     return (
         <div>
             {error && <ErrorBanner message={error} />}
 
-            <SectionHeading
-                title="Live now"
-                description="Accepting complaints, staffed down to sector level."
+            <Toolbar search={search} onSearch={setSearch} placeholder="Search departments" />
+
+            <DataTable
+                rows={departments}
+                columns={columns}
+                getRowId={(d) => d.id}
+                search={search}
+                initialSort={{ key: 'status', direction: 'asc' }}
+                rowTone={(d) => (d.status === 'ACTIVE' ? null : 'muted')}
+                empty="No departments are configured."
+                footnote="Dimmed rows are on the roadmap and are not accepting complaints yet."
             />
-            <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {live.map((d) => (
-                    <Card key={d.id} className="p-5">
-                        <div className="flex items-start gap-3">
-                            <span className="text-2xl" aria-hidden>
-                                {d.icon}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                                <h3 className="font-semibold leading-tight">{d.name}</h3>
-                                {d.nameHi && (
-                                    <p className="text-sm text-[color:var(--muted-foreground)]">{d.nameHi}</p>
-                                )}
-                            </div>
-                            <Badge variant="success">Live</Badge>
-                        </div>
-
-                        <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted-foreground)]">
-                            {d.description}
-                        </p>
-
-                        {d._count && (
-                            <dl className="tnum mt-4 grid grid-cols-3 gap-2 border-t border-[color:var(--border)] pt-3 text-center">
-                                <div>
-                                    <dt className="text-[10px] uppercase tracking-wide text-[color:var(--muted-foreground)]">
-                                        Issues
-                                    </dt>
-                                    <dd className="text-sm font-semibold">{d._count.categories}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-[10px] uppercase tracking-wide text-[color:var(--muted-foreground)]">
-                                        Staff
-                                    </dt>
-                                    <dd className="text-sm font-semibold">{d._count.postings}</dd>
-                                </div>
-                                <div>
-                                    <dt className="text-[10px] uppercase tracking-wide text-[color:var(--muted-foreground)]">
-                                        Complaints
-                                    </dt>
-                                    <dd className="text-sm font-semibold">{d._count.complaints}</dd>
-                                </div>
-                            </dl>
-                        )}
-
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-3 w-full"
-                            onClick={() => void toggleStatus(d)}
-                            disabled={busyId === d.id}
-                        >
-                            {busyId === d.id && <Loader2 className="animate-spin" />}
-                            Take offline
-                        </Button>
-                    </Card>
-                ))}
-            </div>
-
-            <SectionHeading
-                title="On the roadmap"
-                description="Listed so nobody has to guess whether the authority handles it."
-            />
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {planned.map((d) => (
-                    <Card key={d.id} className="border-dashed bg-[color:var(--muted)]/40 p-5">
-                        <div className="flex items-start gap-3">
-                            <span className="text-2xl opacity-50" aria-hidden>
-                                {d.icon}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                                <h3 className="font-semibold leading-tight text-[color:var(--muted-foreground)]">
-                                    {d.name}
-                                </h3>
-                                {d.nameHi && (
-                                    <p className="text-sm text-[color:var(--muted-foreground)] opacity-70">
-                                        {d.nameHi}
-                                    </p>
-                                )}
-                            </div>
-                            <Badge variant="neutral">Coming soon</Badge>
-                        </div>
-
-                        <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted-foreground)]">
-                            {d.description}
-                        </p>
-
-                        {d.roadmapNote && (
-                            <p className="mt-3 rounded-lg bg-[color:var(--card)] px-3 py-2 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
-                                {d.roadmapNote}
-                            </p>
-                        )}
-
-                        <Button
-                            size="sm"
-                            className="mt-3 w-full"
-                            onClick={() => void toggleStatus(d)}
-                            disabled={busyId === d.id}
-                        >
-                            {busyId === d.id && <Loader2 className="animate-spin" />}
-                            Make live
-                        </Button>
-                    </Card>
-                ))}
-            </div>
         </div>
     )
 }

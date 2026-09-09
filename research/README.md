@@ -81,14 +81,27 @@ skill = (AUC − 0.5) / (Bayes ceiling − 0.5)
 
 Skill, mean over five seeds, held-out test split.
 
-| Regime | Entity | Black box | GRIE | GRIE tuned | Gap | After tuning |
+| Regime | Entity | Best black box | GRIE | GRIE tuned | Gap | Recovered by tuning |
 |---|---|---|---|---|---|---|
-| plausible | Sector | 0.958 | 0.956 | 0.971 | 0.002 | ahead |
-| plausible | Project | 0.939 | 0.967 | 0.979 | ahead | ahead |
-| plausible | Contractor | 0.951 | 0.971 | 0.989 | ahead | ahead |
-| adversarial | Sector | 0.982 | 0.871 | 0.954 | 0.110 | **75% closed** |
-| adversarial | Project | 0.970 | 0.943 | 0.948 | 0.027 | 18% closed |
-| adversarial | Contractor | 0.970 | 0.893 | 0.978 | 0.077 | **100% closed** |
+| plausible | Sector | 0.959 | 0.948 | 0.971 | 0.011 | fully |
+| plausible | Project | 0.941 | 0.967 | 0.981 | ahead | — |
+| plausible | Contractor | 0.925 | 0.932 | 0.968 | ahead | — |
+| adversarial | Sector | 0.979 | 0.884 | 0.936 | **0.095** | 55% |
+| adversarial | Project | 0.980 | 0.934 | 0.944 | 0.046 | 22% |
+| adversarial | Contractor | 0.970 | 0.897 | 0.988 | 0.074 | fully |
+
+> **These numbers changed on 9 September 2026** and the earlier ones should not
+> be quoted. Three calibration constants moved from assumed values to published
+> figures — `resolution_days_mean` 6.2 → 12.0 days (CPGRAMS 2024),
+> `budget_overrun_mean` 0.14 → 0.187 and `late_delivery_rate_mean` 0.38 → 0.416
+> (MoSPI, March 2024) — which changes the generated data and therefore every
+> result derived from it.
+>
+> The findings hold in shape. Two numbers the paper would have quoted did move:
+> the worst-case interpretability cost is **9.5% of achievable skill, not 11%**,
+> and tuning recovers **22–100%, not 75–100%**. The project entity is where
+> tuning does least, and a range starting at 22% is a weaker claim than the one
+> previously written down. Report the weaker one.
 
 Read carefully, that is two findings:
 
@@ -109,21 +122,121 @@ Unconstrained tuning collapsed the contractor model to a single factor at **0.99
 
 ---
 
+---
+
+## The real-data arm — BPI Challenge 2015
+
+The constructed dataset above is no longer the only evidence. `bpic_signals.py`
+derives GRIE's five signals from **BPI Challenge 2015**: real building-permit
+logs from five Dutch municipalities, from
+[4TU.ResearchData](https://data.4tu.nl/collections/BPI_Challenge_2015/5065424)
+(van Dongen 2015, CC-BY). Download the five `.xes` files into
+`data/bpic2015/`; they are gitignored, and the first run caches a flat event
+table beside them.
+
+```bash
+python -m drishti_research.bpic_study                # the comparison
+python -m drishti_research.bpic_study --sensitivity  # the constants sweep — run this too
+```
+
+**Read `docs/research-decisions.md` before quoting any number from this arm.**
+The short version: on 268 unit-periods, hand-specified GRIE is ahead of gradient
+boosting in all twelve sensitivity configurations and at worst level with a
+random forest — but the diagnostics say it wins because the signal is additive
+(boosting cannot beat logistic regression) and because at this sample size even
+the smallest boosted configuration overfits by ~0.10 AUC. The claim the data
+supports is narrow: *a black box has no advantage to trade for its capacity on
+governance panels of this size and shape*.
+
+The sensitivity sweep discarded two of the three findings the headline run
+suggested. Publish the sweep, not just the headline.
+
+---
+
+## The gate kill-check
+
+`feasibility_check.py` and `bpic.py` belong to the second paper, not this one.
+They answered W0.2 — whether renormalising a next-action predictor's confidence
+over the policy-permitted set moves the risk–coverage curve — and the answer was
+no, across twenty evaluations. `docs/research-decisions.md` has the working.
+`bpic.py` is shared: its loader and code-scheme parser feed both arms.
+
+---
+
 ## Layout
 
 ```
 drishti_research/
-  calibration.py   every marginal, with a source field and a verification status
-  model_spec.py    loads GRIE's exported weights and curves
-  generator.py     the constructed dataset and its two regimes
-  models.py        InterpretableScorer, gradient boosting, random forest, logistic
-  tuning.py        constrained weight optimisation
-  diagnostics.py   fairness checks — run these first
-  experiments.py   the protocol, the tables
+  calibration.py       every marginal, with a source field and a verification status
+  model_spec.py        loads GRIE's exported weights and curves
+  generator.py         the constructed dataset and its two regimes
+  models.py            InterpretableScorer, gradient boosting, random forest, logistic
+  tuning.py            constrained weight optimisation
+  diagnostics.py       fairness checks — run these first
+  experiments.py       the protocol, the tables
+
+  bpic.py              BPIC 2015 loading, the code scheme, the feasible-action function
+  bpic_signals.py      GRIE's five signals derived from BPIC 2015, with a forward label
+  bpic_study.py        the interpretability comparison on real data, plus --sensitivity
+  feasibility_check.py W0.2, the autonomy-gate kill-check
+
+  classifier.py        W3.1 — TF-IDF + naive Bayes over complaint text
+  predictor.py         W3.2 — next-activity counting model with backoff
+  sla.py               W3.3 — observed resolution quantiles per bucket
 data/
   model-spec.json  exported from the backend; do not hand-edit
+  bpic2015/        downloaded logs and their cache — gitignored, not vendored
+  complaints.csv     event-log.csv     |  exported from the running system; regenerate, never edit
+  resolutions.csv   |
+  sim-labels.csv   /
 results/           CSV output
 ```
+
+---
+
+## The three in-system models
+
+These are a different exercise from the interpretability study above. That study
+asks a research question; these three exist to make the product work, and each
+is trained here, exported as JSON, and executed in TypeScript so the model that
+ships is the model that was measured.
+
+```bash
+cd backend && npm run sim:run -- --reset --days 75 --per-day 28   # generate traffic
+cd backend && npm run export:training                             # complaints + labels
+cd backend && npm run export:eventlog                             # the process log
+cd backend && npm run export:resolutions                          # how long things took
+```
+
+```bash
+cd research
+python -m drishti_research.classifier
+python -m drishti_research.predictor
+python -m drishti_research.sla
+```
+
+**Two of the three shipped. One did not, and the difference is the finding.**
+
+| | Result | Shipped |
+|---|---|---|
+| `classifier.py` | 10.8% against the keyword matcher's 82.4% | **No** — `CLASSIFIER_ENABLED = false` |
+| `predictor.py` | 0.815, versus gradient boosting's 0.815 | Yes |
+| `sla.py` | learned p50/p90 per bucket, with backoff | Yes |
+
+The classifier fails because the corpus cannot support it: 1,094 complaints
+share **23 distinct texts**. Split by row it reports 100% — memorisation wearing
+a rosette — and split by distinct phrasing it collapses. No tuning fixes that;
+only a corpus with real variety would.
+
+The predictor succeeds because the lifecycle is genuinely uncertain even though
+its state machine is small, and because its confidence is *monotone*: held-out
+accuracy runs 0.976 / 0.924 / 0.664 / 0.515 down the confidence bands. That
+table is the evidence that Wave 4's autonomy gate can exist at all — a flat one
+would have meant the gate was theatre.
+
+**Do not quote any of these numbers as evidence about municipal work.** They are
+measured on generated traffic, and the classifier's labels are the generator's
+own. See `docs/pending-work.md` §6.
 
 ## Still to do before the paper
 

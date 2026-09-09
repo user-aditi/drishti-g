@@ -1,9 +1,8 @@
 import type { Metadata } from "next"
-import { ArrowUp, Inbox, TriangleAlert, UserPlus } from "lucide-react"
 import { requireUser } from "@/lib/auth"
 import { serverFetchOr } from "@/lib/api"
 import { PageHeader } from "@/components/shared/page-header"
-import { StatTile } from "@/components/shared/stat-tile"
+import { StatStrip } from "@/components/shared/surface"
 import type { DeskItem } from "@/types"
 import { OfficerDeskClient } from "./client"
 
@@ -34,39 +33,34 @@ export default async function OfficerDeskPage() {
 
     return (
         <div>
-            <PageHeader title="My desk" description={description} />
+            <PageHeader title="My desk" eyebrow={description} />
 
             {res.items.length > 0 && (
-                <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <StatTile
-                        label="Open cases"
-                        value={res.items.length}
-                        icon={<Inbox className="h-6 w-6" />}
-                    />
-                    <StatTile
-                        label="Need a crew"
-                        value={needsAllotment}
-                        tone={needsAllotment > 0 ? "warning" : "default"}
-                        hint="Assigned to you, nobody on the job"
-                        icon={<UserPlus className="h-6 w-6" />}
-                    />
-                    <StatTile
-                        label="Overdue"
-                        value={overdue}
-                        tone={overdue > 0 ? "danger" : "success"}
-                        hint={overdue > 0 ? "Escalating up the chain" : "Nothing past deadline"}
-                        icon={<TriangleAlert className="h-6 w-6" />}
-                    />
-                    <StatTile
-                        label="Escalated"
-                        value={escalated}
-                        tone={escalated > 0 ? "purple" : "default"}
-                        hint="Already raised above you"
-                        icon={<ArrowUp className="h-6 w-6" />}
-                    />
-                </div>
+                <StatStrip
+                    className="mb-6"
+                    stats={[
+                        { label: "Open cases", value: res.items.length },
+                        {
+                            label: "Need a crew",
+                            value: needsAllotment,
+                            tone: needsAllotment > 0 ? "warning" : undefined,
+                            hint: "Assigned to you, nobody on the job",
+                        },
+                        {
+                            label: "Overdue",
+                            value: overdue,
+                            tone: overdue > 0 ? "danger" : "success",
+                            hint: overdue > 0 ? "Escalating up the chain" : "Nothing past deadline",
+                        },
+                        {
+                            label: "Escalated",
+                            value: escalated,
+                            tone: escalated > 0 ? "escalate" : undefined,
+                            hint: "Already raised above you",
+                        },
+                    ]}
+                />
             )}
-
 
             <OfficerDeskClient tasks={res.items} scope="active" />
         </div>

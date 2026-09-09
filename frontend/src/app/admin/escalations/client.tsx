@@ -8,13 +8,23 @@ import { apiClient } from '@/lib/api-client'
 import { messageFrom } from '@/lib/api-error'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Callout } from '@/components/shared/surface'
+import { Toolbar } from '@/components/shared/controls'
+import { DataTable, Mono, RowTitle, type Column } from '@/components/shared/data-table'
 import { ErrorBanner } from '@/components/shared/page-header'
 import { PriorityBadge, StatusBadge } from '@/components/shared/status-badge'
 import { relativeTime } from '@/lib/format'
-import { cn } from '@/lib/utils'
 import type { EscalationInboxItem } from '@/types'
 
+/**
+ * What has climbed to this officer because a deadline was missed below them.
+ *
+ * A register rather than a stack of cards: an escalation inbox is triaged by
+ * comparing rows — which is oldest, which is still unacknowledged, which sector
+ * keeps appearing — and cards make every one of those comparisons a scroll.
+ * The reason it climbed is the one thing that does not fit a column, so it
+ * lives in the row's expansion, one click from the row it belongs to.
+ */
 export function EscalationsClient({
     items,
     canSweep,
@@ -25,6 +35,8 @@ export function EscalationsClient({
     const router = useRouter()
     const [busyId, setBusyId] = useState<number | null>(null)
     const [sweeping, setSweeping] = useState(false)
+    const [search, setSearch] = useState('')
+    const [openId, setOpenId] = useState<string | number | null>(null)
     const [error, setError] = useState<string | null>(null)
 
     const pending = items.filter((i) => i.acknowledgedAt == null)
@@ -55,96 +67,156 @@ export function EscalationsClient({
         }
     }
 
+    const columns: Column<EscalationInboxItem>[] = [
+        {
+            key: 'ref',
+            header: 'Reference',
+            width: 'w-36',
+            value: (e) => e.complaint.referenceNo,
+            cell: (e) => <Mono>{e.complaint.referenceNo}</Mono>,
+        },
+        {
+            key: 'title',
+            header: 'Complaint',
+            value: (e) => `${e.complaint.title} ${e.reason}`,
+            cell: (e) => (
+                <div className="flex items-center gap-2">
+                    {e.complaint.category?.icon ? (
+                        <span aria-hidden>{e.complaint.category.icon}</span>
+                    ) : (
+                        <ArrowUp className="h-4 w-4 text-[color:var(--escalate)]" aria-hidden />
+                    )}
+                    <RowTitle
+                        hint={[
+                            e.complaint.sector && `Sector ${e.complaint.sector.number}`,
+                            e.complaint.department?.name,
+                        ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                    >
+                        {e.complaint.title}
+                    </RowTitle>
+                </div>
+            ),
+        },
+        {
+            key: 'from',
+            header: 'Climbed from',
+            secondary: true,
+            value: (e) => e.fromLabel ?? null,
+            cell: (e) => <span className="text-xs">{e.fromLabel ?? 'below'}</span>,
+        },
+        {
+            key: 'status',
+            header: 'Status',
+            value: (e) => e.complaint.status,
+            cell: (e) => <StatusBadge status={e.complaint.status} />,
+        },
+        {
+            key: 'priority',
+            header: 'Priority',
+            secondary: true,
+            value: (e) => e.complaint.priority,
+            cell: (e) => <PriorityBadge priority={e.complaint.priority} />,
+        },
+        {
+            key: 'when',
+            header: 'Escalated',
+            align: 'right',
+            value: (e) => new Date(e.createdAt).getTime(),
+            cell: (e) => (
+                <span className="text-xs text-[color:var(--muted-foreground)]">
+                    {relativeTime(e.createdAt)}
+                </span>
+            ),
+        },
+        {
+            key: 'ack',
+            header: 'Acknowledged',
+            align: 'right',
+            width: 'w-40',
+            value: (e) => (e.acknowledgedAt ? new Date(e.acknowledgedAt).getTime() : null),
+            cell: (e) =>
+                e.acknowledgedAt ? (
+                    <Badge variant="success">{relativeTime(e.acknowledgedAt)}</Badge>
+                ) : (
+                    <Button
+                        size="sm"
+                        onClick={(event) => {
+                            event.stopPropagation()
+                            void acknowledge(e.id)
+                        }}
+                        disabled={busyId === e.id}
+                    >
+                        {busyId === e.id && <Loader2 className="animate-spin" />}
+                        Acknowledge
+                    </Button>
+                ),
+        },
+    ]
+
     return (
         <div>
             {error && <ErrorBanner message={error} />}
 
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                {pending.length > 0 ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-                        <strong className="tnum">{pending.length}</strong> escalation
-                        {pending.length === 1 ? '' : 's'} still unacknowledged.
-                    </div>
-                ) : (
-                    <span />
-                )}
+            {pending.length > 0 && (
+                <Callout
+                    tone="escalate"
+                    icon={<ArrowUp className="h-4 w-4" aria-hidden />}
+                    className="mb-4"
+                    title={`${pending.length} escalation${pending.length === 1 ? '' : 's'} still unacknowledged`}
+                >
+                    Acknowledging records that you have seen it. It stays on your desk either way
+                    until the complaint underneath is settled.
+                </Callout>
+            )}
 
-                {canSweep && (
-                    <Button variant="outline" onClick={() => void sweep()} disabled={sweeping}>
-                        {sweeping && <Loader2 className="animate-spin" />}
-                        Run escalation sweep
-                    </Button>
-                )}
-            </div>
+            <Toolbar
+                search={search}
+                onSearch={setSearch}
+                placeholder="Search these escalations"
+                actions={
+                    canSweep && (
+                        <Button variant="outline" onClick={() => void sweep()} disabled={sweeping}>
+                            {sweeping && <Loader2 className="animate-spin" />}
+                            Run escalation sweep
+                        </Button>
+                    )
+                }
+            />
 
-            <div className="space-y-3">
-                {items.map((e) => (
-                    <Card
-                        key={e.id}
-                        className={cn(
-                            'p-4',
-                            e.acknowledgedAt == null ? 'border-l-4 border-l-purple-500' : 'opacity-70',
-                        )}
-                    >
-                        <div className="flex items-start gap-3">
-                            <div
-                                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-lg"
-                                aria-hidden
+            <DataTable
+                rows={items}
+                columns={columns}
+                getRowId={(e) => e.id}
+                search={search}
+                initialSort={{ key: 'when', direction: 'desc' }}
+                rowTone={(e) => (e.acknowledgedAt == null ? 'warning' : 'muted')}
+                empty="Nothing has been escalated to you."
+                footnote="Amber rows have not been acknowledged yet."
+                expansion={{
+                    openId,
+                    onToggle: setOpenId,
+                    label: (e) => `Why ${e.complaint.referenceNo} was escalated`,
+                    render: (e) => (
+                        <div className="space-y-3">
+                            <Callout
+                                tone="escalate"
+                                title={`From ${e.fromLabel ?? 'below'}`}
+                                icon={<ArrowUp className="h-4 w-4" aria-hidden />}
                             >
-                                {e.complaint.category?.icon ?? <ArrowUp className="h-5 w-5 text-purple-600" />}
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                    <h3 className="min-w-0 flex-1 font-medium">{e.complaint.title}</h3>
-                                    <div className="flex shrink-0 gap-1.5">
-                                        <StatusBadge status={e.complaint.status} />
-                                        {e.complaint.priority !== 'MEDIUM' && (
-                                            <PriorityBadge priority={e.complaint.priority} />
-                                        )}
-                                    </div>
-                                </div>
-
-                                <p className="mt-1.5 rounded-lg bg-purple-50 px-3 py-2 text-sm text-purple-900">
-                                    <span className="font-medium">From {e.fromRankLabel}:</span> {e.reason}
-                                </p>
-
-                                <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--muted-foreground)]">
-                                    <span className="font-mono text-[11px] opacity-70">
-                                        {e.complaint.referenceNo}
-                                    </span>
-                                    {e.complaint.sector && <span>Sector {e.complaint.sector.number}</span>}
-                                    {e.complaint.department && <span>{e.complaint.department.name}</span>}
-                                    <span>escalated {relativeTime(e.createdAt)}</span>
-                                </div>
-
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    {e.acknowledgedAt == null ? (
-                                        <Button
-                                            size="sm"
-                                            onClick={() => void acknowledge(e.id)}
-                                            disabled={busyId === e.id}
-                                        >
-                                            {busyId === e.id && <Loader2 className="animate-spin" />}
-                                            Acknowledge
-                                        </Button>
-                                    ) : (
-                                        <Badge variant="success">
-                                            Acknowledged {relativeTime(e.acknowledgedAt)}
-                                        </Badge>
-                                    )}
-                                    <Button asChild size="sm" variant="outline">
-                                        <Link href={`/complaints/${e.complaint.id}`}>
-                                            <FileText />
-                                            Case file
-                                        </Link>
-                                    </Button>
-                                </div>
-                            </div>
+                                {e.reason}
+                            </Callout>
+                            <Button asChild size="sm" variant="outline">
+                                <Link href={`/complaints/${e.complaint.id}`}>
+                                    <FileText />
+                                    Open the case file
+                                </Link>
+                            </Button>
                         </div>
-                    </Card>
-                ))}
-            </div>
+                    ),
+                }}
+            />
         </div>
     )
 }

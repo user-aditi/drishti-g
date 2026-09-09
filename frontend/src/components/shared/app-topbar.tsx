@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Bell } from 'lucide-react'
+import { ThemeToggle } from './theme-toggle'
 import { apiClient } from '@/lib/api-client'
 import { relativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -23,15 +24,27 @@ const SEGMENT_LABEL: Record<string, string> = {
     people: 'People',
     audit: 'Audit trail',
     departments: 'Departments',
+    console: 'Control room',
+    geography: 'Geography',
+    organisation: 'Organisation',
+    staff: 'Staff register',
+    works: 'Works & contracts',
     map: 'Map',
     desk: 'My desk',
-    inspect: 'To inspect',
+    inspect: 'Needs my decision',
+    crew: 'My crew',
     done: 'Completed',
     jobs: 'Jobs',
     new: 'New',
 }
 
 function crumbsFor(pathname: string): { href: string; label: string }[] {
+    // Console pages draw their own trail from the records themselves — "Zone I ›
+    // Work Circle 2 › Sector 62" rather than "console / city / sectors / 7".
+    // Two breadcrumbs saying different things is worse than one saying the
+    // useful one, so the generic trail stands down here.
+    if (pathname.startsWith('/admin/console')) return []
+
     const segments = pathname.split('/').filter(Boolean)
     const items: { href: string; label: string }[] = []
 
@@ -97,7 +110,7 @@ function NotificationBell() {
         <div className="relative" ref={ref}>
             <button
                 onClick={() => setOpen((v) => !v)}
-                className="relative rounded-lg p-2 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]"
+                className="relative rounded-[var(--radius-lg)] p-2 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)] hover:text-[color:var(--foreground)]"
                 aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ''}`}
             >
                 <Bell className="h-5 w-5" />
@@ -109,7 +122,7 @@ function NotificationBell() {
             </button>
 
             {open && (
-                <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-xl border border-[color:var(--border)] bg-[color:var(--card)] shadow-lg">
+                <div className="absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-[var(--radius-xl)] border border-[color:var(--border)] bg-[color:var(--popover)] shadow-[var(--shadow-lg)]">
                     <div className="flex items-center justify-between border-b border-[color:var(--border)] px-4 py-2.5">
                         <span className="text-sm font-semibold">Notifications</span>
                         {unread > 0 && (
@@ -136,8 +149,8 @@ function NotificationBell() {
                                     key={n.id}
                                     onClick={() => void openItem(n)}
                                     className={cn(
-                                        'block w-full border-b border-[color:var(--border)] px-4 py-3 text-left transition-colors hover:bg-[color:var(--muted)]',
-                                        !n.isRead && 'bg-[color:var(--accent)]/40',
+                                        'block w-full border-b border-[color:var(--border)] px-4 py-3 text-left transition-colors hover:bg-[color:var(--sunken)]',
+                                        !n.isRead && 'bg-[color:var(--primary-wash)]',
                                     )}
                                 >
                                     <div className="flex items-start gap-2">
@@ -169,7 +182,7 @@ export function AppTopbar() {
     const crumbs = crumbsFor(pathname)
 
     return (
-        <header className="sticky top-0 z-30 border-b border-[color:var(--border)] bg-[color:var(--card)]/90 backdrop-blur">
+        <header className="sticky top-0 z-30 border-b border-[color:var(--border)] bg-[color:var(--card)]/80 backdrop-blur-md">
             <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
                 <nav aria-label="Breadcrumb" className="min-w-0 overflow-x-auto">
                     <ol className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-[color:var(--muted-foreground)]">
@@ -193,7 +206,10 @@ export function AppTopbar() {
                     </ol>
                 </nav>
 
-                <NotificationBell />
+                <div className="flex shrink-0 items-center gap-2">
+                    <ThemeToggle className="hidden sm:inline-flex" />
+                    <NotificationBell />
+                </div>
             </div>
         </header>
     )

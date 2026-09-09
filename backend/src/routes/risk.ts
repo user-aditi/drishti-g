@@ -13,7 +13,12 @@ import { prisma } from '../lib/prisma.js'
 import { authenticate, requireCircleOfficer, requireOfficer } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
-import { FACTOR_SETS, REVIEW_THRESHOLD, MODEL_VERSION } from '../services/grie.js'
+import {
+  FACTOR_SETS,
+  REVIEW_THRESHOLD,
+  MODEL_VERSION,
+  type ScorableEntityType,
+} from '../services/grie.js'
 import {
   RISK_BAND_ORDER,
   collectSignals,
@@ -29,6 +34,23 @@ export const riskRouter: Router = Router()
 // restricted to Circle Officer and above.
 riskRouter.use(authenticate, requireOfficer)
 
+/**
+ * The entity types these routes will answer for.
+ *
+ * Narrower than `RiskEntityType` on purpose: PROJECT and CONTRACTOR remain in
+ * the enum so historical rows still read, but nothing scores them any more, so
+ * asking for one is a 400 rather than a crash inside the scorer.
+ */
+const SCORABLE_ENTITY_TYPES = [
+  RiskEntityType.ORG_UNIT,
+  RiskEntityType.DEPARTMENT,
+  RiskEntityType.SECTOR,
+  RiskEntityType.CIRCLE,
+  RiskEntityType.ZONE,
+] as const
+
+const scorableEntityType = z.enum(SCORABLE_ENTITY_TYPES)
+
 /** The supervisor review queue: most severe first, then most recent. */
 riskRouter.get(
   '/queue',
@@ -42,7 +64,11 @@ riskRouter.get(
     const { status } = req.query as unknown as { status: ReviewStatus }
 
     const flags = await prisma.riskFlag.findMany({
-      where: { status },
+      // Works flags are excluded rather than filtered in the UI: nothing scores
+      // a contractor or a project any more, so any such row is a stale reading
+      // of synthetic data and must not sit in a supervisor's queue as though it
+      // were current. The rows stay in the table; they just stop being served.
+      where: { status, entityType: { in: [...SCORABLE_ENTITY_TYPES] } },
       include: { riskScore: true, reviewedBy: { select: { id: true, fullName: true } } },
       orderBy: { updatedAt: 'desc' },
     })
@@ -70,26 +96,34 @@ riskRouter.get(
   }),
 )
 
-/** Current score for every sector — powers the overview and the map. */
+/**
+ * Current score for every ground-floor unit — powers the overview and the map.
+ *
+ * Kept at `/sectors` because that is what the map calls it; the rows are org
+ * units now, named by their own layer.
+ */
 riskRouter.get(
   '/sectors',
   asyncHandler(async (_req, res) => {
-    const sectors = await prisma.sector.findMany({
-      include: { circle: { include: { zone: true } } },
-      orderBy: { number: 'asc' },
+    const units = await prisma.orgUnit.findMany({
+      where: { isLeaf: true, isActive: true },
+      include: { parent: { select: { name: true } } },
+      orderBy: { name: 'asc' },
     })
 
     const items = await Promise.all(
-      sectors.map(async (sector) => {
-        const score = await latestScore(RiskEntityType.SECTOR, sector.id)
+      units.map(async (unit) => {
+        const score = await latestScore(RiskEntityType.ORG_UNIT, unit.id)
         return {
-          sectorId: sector.id,
-          number: sector.number,
-          name: sector.name,
-          circle: sector.circle.name,
-          zone: sector.circle.zone.name,
-          centroidLat: sector.centroidLat,
-          centroidLon: sector.centroidLon,
+          sectorId: unit.id,
+          unitId: unit.id,
+          number: Number(unit.code.replace(/^SEC-/, '')) || unit.id,
+          name: unit.name,
+          kindLabel: unit.kindLabel,
+          circle: unit.parent?.name ?? '',
+          zone: unit.parent?.name ?? '',
+          centroidLat: unit.centroidLat,
+          centroidLon: unit.centroidLon,
           score: score?.score ?? null,
           band: score?.band ?? null,
           factors: score?.factors ?? [],
@@ -111,14 +145,14 @@ riskRouter.get(
   '/:entityType/:entityId',
   validate(
     z.object({
-      entityType: z.nativeEnum(RiskEntityType),
+      entityType: scorableEntityType,
       entityId: z.coerce.number().int().positive(),
     }),
     'params',
   ),
   asyncHandler(async (req, res) => {
     const { entityType, entityId } = req.params as unknown as {
-      entityType: RiskEntityType
+      entityType: ScorableEntityType
       entityId: number
     }
 
@@ -160,14 +194,14 @@ riskRouter.post(
   '/:entityType/:entityId/recompute',
   validate(
     z.object({
-      entityType: z.nativeEnum(RiskEntityType),
+      entityType: scorableEntityType,
       entityId: z.coerce.number().int().positive(),
     }),
     'params',
   ),
   asyncHandler(async (req, res) => {
     const { entityType, entityId } = req.params as unknown as {
-      entityType: RiskEntityType
+      entityType: ScorableEntityType
       entityId: number
     }
     res.json(await recomputeEntity(entityType, entityId))

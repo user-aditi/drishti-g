@@ -17,7 +17,7 @@ const registerSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
   fullName: z.string().min(2, 'Enter your full name').max(128),
   phone: z.string().max(20).optional(),
-  homeSectorId: z.number().int().positive().nullable().optional(),
+  homeUnitId: z.number().int().positive().nullable().optional(),
 })
 
 const loginSchema = z.object({
@@ -63,7 +63,7 @@ authRouter.post(
           fullName: body.fullName,
           phone: body.phone ?? null,
           rank: Rank.CITIZEN,
-          homeSectorId: body.homeSectorId ?? null,
+          homeUnitId: body.homeUnitId ?? null,
         },
       })
       await audit.record(tx, {

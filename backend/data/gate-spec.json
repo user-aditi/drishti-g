@@ -1,0 +1,50 @@
+{
+  "contract": "gate/split-conformal/1",
+  "modelVersion": "gate-v1-conformal",
+  "trainedAt": "2026-09-09T17:32:03.423528+00:00",
+  "calibratedOnCases": 924,
+  "floor": 0.5,
+  "thresholds": {
+    "LOW": {
+      "threshold": 0.55,
+      "alpha": 0.1,
+      "observedError": 0.0368,
+      "coverage": 0.803,
+      "calibratedOn": 1015,
+      "automatable": true,
+      "why": "At 0.55 the observed error is 3.7%, within the 10% tolerance."
+    },
+    "MEDIUM": {
+      "threshold": 1.0,
+      "alpha": 0.05,
+      "observedError": 0.0,
+      "coverage": 0.0,
+      "calibratedOn": 1744,
+      "automatable": false,
+      "why": "No threshold down to 0.50 kept the error within 5%. Nothing in this class may execute without a human."
+    },
+    "HIGH": {
+      "threshold": 1.0,
+      "alpha": 0.01,
+      "observedError": 0.0,
+      "coverage": 0.0,
+      "calibratedOn": 1488,
+      "automatable": false,
+      "why": "No threshold down to 0.50 kept the error within 1%. Nothing in this class may execute without a human."
+    }
+  },
+  "riskOfAction": {
+    "ROUTED": "MEDIUM",
+    "ASSIGNED": "MEDIUM",
+    "IN_PROGRESS": "MEDIUM",
+    "AWAITING_VERIFICATION": "HIGH",
+    "RESOLVED": "HIGH",
+    "CLOSED": "HIGH",
+    "REJECTED": "HIGH",
+    "DUPLICATE": "HIGH",
+    "<END>": "LOW"
+  },
+  "infeasibleArgmaxRate": 0.0192,
+  "medium_risk_anticalibrated": true,
+  "note": "Calibrated against the transition constraint only. The running gate also intersects with actor rank and posting scope, which raises confidence further, so these are a floor to start from rather than a guarantee. MEDIUM-risk actions are ANTI-calibrated on this data: error rises from 18.8% to 27.2% as confidence goes from 0.80 to 0.90, so a higher bar admits worse decisions. Only LOW-risk actions may be automated."
+}

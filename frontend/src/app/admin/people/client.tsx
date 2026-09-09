@@ -8,10 +8,12 @@ import { apiClient } from '@/lib/api-client'
 import { messageFrom } from '@/lib/api-error'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Panel } from '@/components/shared/surface'
+import { FilterChips, Toolbar } from '@/components/shared/controls'
+import { DataTable, Mono, RowTitle, type Column } from '@/components/shared/data-table'
 import { ErrorBanner, SectionHeading } from '@/components/shared/page-header'
 import { RANK_LABEL, RANK_LEVEL, RANK_STYLE, TRADE_LABEL } from '@/lib/constants'
 import { initials } from '@/lib/format'
@@ -34,6 +36,16 @@ const NEEDS: Record<string, 'zone' | 'circle' | 'sector' | 'none'> = {
     CIRCLE_OFFICER: 'circle',
     SECTION_OFFICER: 'sector',
     FIELD_WORKER: 'sector',
+}
+
+/** Where a posting sits, in the words the authority uses. */
+function placeOf(user: User): string | null {
+    const p = user.primaryPosting
+    if (!p) {
+        return user.homeSector ? `Sector ${user.homeSector.number}` : null
+    }
+    if (p.sector) return `Sector ${p.sector.number}`
+    return p.circle?.name ?? p.zone?.name ?? null
 }
 
 function AppointForm({
@@ -89,7 +101,7 @@ function AppointForm({
     }
 
     return (
-        <Card className="mb-5 p-5">
+        <Panel className="mb-5">
             <form onSubmit={submit} className="space-y-4">
                 <SectionHeading
                     title="Appoint someone to a post"
@@ -264,10 +276,19 @@ function AppointForm({
                     </Button>
                 </div>
             </form>
-        </Card>
+        </Panel>
     )
 }
 
+/**
+ * The rolls of the authority.
+ *
+ * Rows rather than list items, because every question asked here is a
+ * comparison down a column: who is posted where, who is carrying nothing, which
+ * accounts are switched off. Searching and rank filtering stay on the server —
+ * this list is the whole authority, not one page of it — while sorting is
+ * local so a column can be reordered without a round trip.
+ */
 export function PeopleClient({
     people,
     total,
@@ -319,16 +340,116 @@ export function PeopleClient({
         }
     }
 
+    const columns: Column<User>[] = [
+        {
+            key: 'name',
+            header: 'Name',
+            value: (u) => `${u.fullName} ${u.email}`,
+            cell: (u) => (
+                <div className="flex items-center gap-3">
+                    <span
+                        className={cn(
+                            'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
+                            u.isActive
+                                ? 'bg-[color:var(--accent)] text-[color:var(--accent-foreground)]'
+                                : 'bg-[color:var(--muted)] text-[color:var(--muted-foreground)]',
+                        )}
+                        aria-hidden
+                    >
+                        {initials(u.fullName)}
+                    </span>
+                    <RowTitle hint={u.email}>
+                        <span className={cn(!u.isActive && 'line-through opacity-60')}>
+                            {u.fullName}
+                        </span>
+                    </RowTitle>
+                </div>
+            ),
+        },
+        {
+            key: 'post',
+            header: 'Post',
+            // Sorted by seniority, not alphabetically: "who is senior here" is
+            // the question, and an alphabetical rank column answers nothing.
+            value: (u) => RANK_LEVEL[u.rank],
+            cell: (u) => (
+                <Badge className={RANK_STYLE[u.rank]}>
+                    {u.primaryPosting?.designationTitle ?? RANK_LABEL[u.rank]}
+                </Badge>
+            ),
+        },
+        {
+            key: 'department',
+            header: 'Department',
+            secondary: true,
+            value: (u) => u.primaryPosting?.department?.name ?? null,
+            cell: (u) =>
+                u.primaryPosting?.department ? (
+                    <span className="text-xs">
+                        {u.primaryPosting.department.icon} {u.primaryPosting.department.name}
+                    </span>
+                ) : (
+                    <span className="text-[color:var(--subtle-foreground)]">—</span>
+                ),
+        },
+        {
+            key: 'place',
+            header: 'Charge',
+            value: (u) => placeOf(u),
+            cell: (u) => (
+                <span className="text-xs">
+                    {placeOf(u) ?? <span className="text-[color:var(--subtle-foreground)]">—</span>}
+                </span>
+            ),
+        },
+        {
+            key: 'code',
+            header: 'Employee no.',
+            secondary: true,
+            value: (u) => u.primaryPosting?.employeeCode ?? null,
+            cell: (u) =>
+                u.primaryPosting?.employeeCode ? (
+                    <Mono>{u.primaryPosting.employeeCode}</Mono>
+                ) : (
+                    <span className="text-[color:var(--subtle-foreground)]">—</span>
+                ),
+        },
+        {
+            key: 'status',
+            header: 'Account',
+            value: (u) => (u.isActive ? 'Active' : 'Inactive'),
+            cell: (u) =>
+                u.isActive ? (
+                    <Badge variant="success">Active</Badge>
+                ) : (
+                    <Badge variant="danger">Inactive</Badge>
+                ),
+        },
+        {
+            key: 'actions',
+            header: '',
+            align: 'right',
+            width: 'w-32',
+            cell: (u) =>
+                u.id === currentUserId ? (
+                    <span className="text-xs text-[color:var(--subtle-foreground)]">You</span>
+                ) : (
+                    <Button
+                        size="sm"
+                        variant={u.isActive ? 'outline' : 'default'}
+                        onClick={() => void toggleActive(u)}
+                        disabled={busyId === u.id}
+                    >
+                        {busyId === u.id && <Loader2 className="animate-spin" />}
+                        {u.isActive ? 'Deactivate' : 'Reactivate'}
+                    </Button>
+                ),
+        },
+    ]
+
     return (
         <div>
-            {!creating && (
-                <div className="mb-5 flex justify-end">
-                    <Button onClick={() => setCreating(true)}>
-                        <UserPlus />
-                        Appoint someone
-                    </Button>
-                </div>
-            )}
+            {error && <ErrorBanner message={error} />}
 
             {creating && (
                 <AppointForm
@@ -342,104 +463,45 @@ export function PeopleClient({
                 />
             )}
 
-            {error && <ErrorBanner message={error} />}
+            <Toolbar
+                search={search}
+                onSearch={setSearch}
+                placeholder="Search by name or email"
+                actions={
+                    !creating && (
+                        <Button onClick={() => setCreating(true)}>
+                            <UserPlus />
+                            Appoint someone
+                        </Button>
+                    )
+                }
+            />
 
-            <Card className="mb-4 space-y-3 p-5">
-                <Input
-                    placeholder="Search by name or email"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                />
-                <div className="flex flex-wrap gap-1.5">
-                    {(['', ...APPOINTABLE, 'CITIZEN'] as (Rank | '')[]).map((r) => (
-                        <button
-                            key={r || 'all'}
-                            onClick={() => apply({ rank: r })}
-                            className={cn(
-                                'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-                                filters.rank === r
-                                    ? 'bg-[color:var(--primary)] text-white'
-                                    : 'bg-[color:var(--muted)] text-[color:var(--muted-foreground)] hover:bg-slate-200',
-                            )}
-                        >
-                            {r === '' ? 'Everyone' : RANK_LABEL[r]}
-                        </button>
-                    ))}
-                </div>
-            </Card>
+            <FilterChips
+                label="Filter by post"
+                className="mb-4"
+                value={filters.rank}
+                onChange={(rank) => apply({ rank })}
+                options={[
+                    { value: '', label: 'Everyone' },
+                    ...APPOINTABLE.map((r) => ({ value: r, label: RANK_LABEL[r] })),
+                    { value: 'CITIZEN', label: RANK_LABEL.CITIZEN },
+                ]}
+            />
 
-            <Card className="overflow-hidden">
-                <ul className="divide-y divide-[color:var(--border)]">
-                    {[...people]
-                        .sort((a, b) => RANK_LEVEL[b.rank] - RANK_LEVEL[a.rank])
-                        .map((u) => {
-                            const p = u.primaryPosting
-                            return (
-                                <li key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                                    <div
-                                        className={cn(
-                                            'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
-                                            u.isActive
-                                                ? 'bg-[color:var(--accent)] text-[color:var(--accent-foreground)]'
-                                                : 'bg-[color:var(--muted)] text-[color:var(--muted-foreground)]',
-                                        )}
-                                    >
-                                        {initials(u.fullName)}
-                                    </div>
-
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <span
-                                                className={cn(
-                                                    'truncate text-sm font-medium',
-                                                    !u.isActive &&
-                                                        'text-[color:var(--muted-foreground)] line-through',
-                                                )}
-                                            >
-                                                {u.fullName}
-                                            </span>
-                                            <Badge className={RANK_STYLE[u.rank]}>
-                                                {p?.designationTitle ?? RANK_LABEL[u.rank]}
-                                            </Badge>
-                                            {!u.isActive && <Badge variant="danger">Inactive</Badge>}
-                                        </div>
-                                        <p className="truncate text-xs text-[color:var(--muted-foreground)]">
-                                            {u.email}
-                                            {p?.department && ` · ${p.department.name}`}
-                                            {p?.sector
-                                                ? ` · Sector ${p.sector.number}`
-                                                : p?.circle
-                                                  ? ` · ${p.circle.name}`
-                                                  : p?.zone
-                                                    ? ` · ${p.zone.name}`
-                                                    : ''}
-                                            {p?.employeeCode && ` · ${p.employeeCode}`}
-                                            {u.rank === 'CITIZEN' &&
-                                                u.homeSector &&
-                                                ` · Sector ${u.homeSector.number}`}
-                                        </p>
-                                    </div>
-
-                                    {u.id !== currentUserId && (
-                                        <Button
-                                            size="sm"
-                                            variant={u.isActive ? 'outline' : 'default'}
-                                            onClick={() => void toggleActive(u)}
-                                            disabled={busyId === u.id}
-                                        >
-                                            {busyId === u.id && <Loader2 className="animate-spin" />}
-                                            {u.isActive ? 'Deactivate' : 'Reactivate'}
-                                        </Button>
-                                    )}
-                                </li>
-                            )
-                        })}
-                </ul>
-            </Card>
-
-            <p className="tnum mt-3 text-sm text-[color:var(--muted-foreground)]">
-                {total} {total === 1 ? 'person' : 'people'} on the rolls
-            </p>
+            <DataTable
+                rows={people}
+                columns={columns}
+                getRowId={(u) => u.id}
+                initialSort={{ key: 'post', direction: 'desc' }}
+                rowTone={(u) => (u.isActive ? null : 'muted')}
+                empty="Nobody matches this filter."
+                footnote={
+                    people.length < total
+                        ? `Showing ${people.length} of ${total} on the rolls.`
+                        : `${total} ${total === 1 ? 'person' : 'people'} on the rolls.`
+                }
+            />
         </div>
     )
 }

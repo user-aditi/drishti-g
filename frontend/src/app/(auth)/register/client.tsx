@@ -13,16 +13,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { ErrorBanner } from '@/components/shared/page-header'
-import type { Sector } from '@/types'
+import type { Area } from '@/types'
 
-export function RegisterClient({ sectors }: { sectors: Sector[] }) {
+export function RegisterClient({ areas }: { areas: Area[] }) {
     const router = useRouter()
     const [form, setForm] = useState({
         fullName: '',
         email: '',
         phone: '',
         password: '',
-        homeSectorId: '',
+        homeUnitId: '',
     })
     const [error, setError] = useState<string | null>(null)
     const [submitting, setSubmitting] = useState(false)
@@ -40,7 +40,7 @@ export function RegisterClient({ sectors }: { sectors: Sector[] }) {
                 email: form.email,
                 password: form.password,
                 phone: form.phone || undefined,
-                homeSectorId: form.homeSectorId ? Number(form.homeSectorId) : null,
+                homeUnitId: form.homeUnitId ? Number(form.homeUnitId) : null,
             })
             router.replace('/')
             router.refresh()
@@ -118,20 +118,20 @@ export function RegisterClient({ sectors }: { sectors: Sector[] }) {
                             </div>
                         </div>
 
-                        {sectors.length > 0 && (
+                        {areas.length > 0 && (
                             <div>
-                                <Label htmlFor="homeSectorId">
-                                    Your sector <span className="font-normal opacity-60">(optional)</span>
+                                <Label htmlFor="homeUnitId">
+                                    Where you live <span className="font-normal opacity-60">(optional)</span>
                                 </Label>
                                 <Select
-                                    id="homeSectorId"
-                                    value={form.homeSectorId}
-                                    onChange={(e) => update('homeSectorId', e.target.value)}
+                                    id="homeUnitId"
+                                    value={form.homeUnitId}
+                                    onChange={(e) => update('homeUnitId', e.target.value)}
                                 >
-                                    <option value="">Select your sector</option>
-                                    {sectors.map((s) => (
-                                        <option key={s.id} value={s.id}>
-                                            Sector {s.number} — {s.name}
+                                    <option value="">Select your area</option>
+                                    {areas.map((a) => (
+                                        <option key={a.id} value={a.id}>
+                                            {a.name}
                                         </option>
                                     ))}
                                 </Select>

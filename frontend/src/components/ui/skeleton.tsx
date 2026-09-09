@@ -4,11 +4,11 @@ import { cn } from '@/lib/utils'
 function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
     return (
         <div
-            className={cn('relative overflow-hidden rounded bg-slate-200/80', className)}
+            className={cn('relative overflow-hidden rounded-[var(--radius-md)] bg-[color:var(--muted)]', className)}
             {...props}
         >
             <div
-                className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent"
+                className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-[color:var(--card)]/70 to-transparent"
                 style={{ animation: 'shimmer 1.6s infinite' }}
             />
         </div>

@@ -1,46 +1,33 @@
-import type { Metadata } from 'next'
-import { requireUser } from '@/lib/auth'
-import { serverFetchOr } from '@/lib/api'
-import { EmptyState, PageHeader } from '@/components/shared/page-header'
-import type { Department, OrgChart } from '@/types'
-import { OrgChartClient } from './client'
+import { redirect } from 'next/navigation'
+import { serverFetch } from '@/lib/api'
+import { ApiError } from '@/lib/api-error'
 
-export const metadata: Metadata = { title: 'Org chart · DRISHTI-G' }
 export const dynamic = 'force-dynamic'
 
 /**
- * Who holds which post, tier by tier.
+ * The entry point to the tree.
  *
- * Answers "who is responsible for Sector 5 sanitation?" without anyone having
- * to ask around — and makes a vacancy visible, which is usually the reason a
- * complaint sits unactioned.
+ * There is no separate "top of the city" screen — the root is just a unit, so
+ * this hands straight over to the one drill-down page rather than duplicating
+ * it. Keeping a stable `/admin/org` URL means the nav never has to know which
+ * unit a given person enters at: the API answers that from their posting.
  */
-export default async function OrgChartPage({ searchParams }: { searchParams?: { dept?: string } }) {
-    await requireUser('CIRCLE_OFFICER')
-
-    const departments = (await serverFetchOr<Department[]>('/departments', [])).filter(
-        (d) => d.status === 'ACTIVE',
-    )
-
-    if (departments.length === 0) {
-        return (
-            <div>
-                <PageHeader title="Organisation chart" />
-                <EmptyState title="No active departments" />
-            </div>
-        )
+export default async function OrgIndexPage() {
+    let rootId: number
+    try {
+        ;({ rootId } = await serverFetch<{ rootId: number }>('/console/units'))
+    } catch (err) {
+        // A session that expires between the layout's check and this fetch would
+        // otherwise surface as a crash. Send them to sign in again instead.
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+            redirect('/login')
+        }
+        // Nobody posted anywhere — real for a brand-new account, and not an error.
+        if (err instanceof ApiError && err.status === 404) {
+            redirect('/admin/dashboard')
+        }
+        throw err
     }
 
-    const selectedId = Number(searchParams?.dept ?? departments[0]!.id)
-    const chart = await serverFetchOr<OrgChart | null>(`/departments/${selectedId}/chart`, null)
-
-    return (
-        <div>
-            <PageHeader
-                title="Organisation chart"
-                description="The chain of command a complaint travels up when it is not resolved in time."
-            />
-            <OrgChartClient departments={departments} selectedId={selectedId} chart={chart} />
-        </div>
-    )
+    redirect(`/admin/org/${rootId}`)
 }

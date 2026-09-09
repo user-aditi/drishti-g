@@ -1,27 +1,22 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import {
-    ArrowUpCircle,
     ClipboardList,
-    Clock,
     Landmark,
     Map as MapIcon,
     MapPin,
     Network,
-    SearchCheck,
     ShieldCheck,
-    TriangleAlert,
     Users,
-    Zap,
 } from 'lucide-react'
 import { requireUser } from '@/lib/auth'
 import { serverFetchOr } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { PageHeader, SectionHeading } from '@/components/shared/page-header'
-import { StatTile } from '@/components/shared/stat-tile'
+import { Panel, PanelHeader, StatStrip, MeterRow, type Stat } from '@/components/shared/surface'
+import { PageHeader } from '@/components/shared/page-header'
 import { RiskBadge } from '@/components/shared/status-badge'
 import { STATUS_FUNNEL, STATUS_META, isAuthorityWide, isSeniorOfficer } from '@/lib/constants'
+import { cn } from '@/lib/utils'
 import type {
     ComplaintStatus,
     EscalationInboxItem,
@@ -33,6 +28,12 @@ import type {
 export const metadata: Metadata = { title: 'Overview · DRISHTI-G' }
 export const dynamic = 'force-dynamic'
 
+/**
+ * Where every complaint currently stands, as a proportion of the whole.
+ *
+ * Each status keeps its own colour from STATUS_META, so a bar here and a badge
+ * in the queue below are the same green for "resolved".
+ */
 function StatusFunnel({
     byStatus,
     total,
@@ -49,26 +50,24 @@ function StatusFunnel({
     }
 
     return (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
             {rows.map(({ status, count }) => {
                 const meta = STATUS_META[status]
                 const pct = (count / total) * 100
                 return (
-                    <div key={status}>
-                        <div className="flex items-baseline justify-between text-sm">
-                            <span className="font-medium">{meta.label}</span>
-                            <span className="tnum text-[color:var(--muted-foreground)]">
+                    <MeterRow
+                        key={status}
+                        label={meta.label}
+                        value={count}
+                        max={total}
+                        colour={meta.hex}
+                        display={
+                            <>
                                 {count}
                                 <span className="ml-1 text-xs opacity-70">{pct.toFixed(0)}%</span>
-                            </span>
-                        </div>
-                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-[color:var(--muted)]">
-                            <div
-                                className="h-full rounded-full"
-                                style={{ width: `${Math.max(pct, 1.5)}%`, background: meta.hex }}
-                            />
-                        </div>
-                    </div>
+                            </>
+                        }
+                    />
                 )
             })}
         </div>
@@ -110,9 +109,62 @@ export default async function AdminDashboardPage() {
     const maxDept = Math.max(...departmentBreakdown.map((d) => d.count), 1)
     const worstSectors = performance.items.slice(0, 5)
 
+    // The headline row. Anything that is really a queue is a link, because a
+    // number an officer cannot act on is a number they will stop reading.
+    const headline: Stat[] = [
+        {
+            label: 'Complaints',
+            value: complaints.total,
+            hint: `${people.citizens} registered citizens`,
+        },
+        {
+            label: 'Currently open',
+            value: complaints.open,
+            tone: complaints.open > 0 ? 'warning' : undefined,
+            hint: `${people.officers} officers · ${people.workers} workers`,
+        },
+        {
+            label: 'Past deadline',
+            value: complaints.overdue,
+            tone: complaints.overdue > 0 ? 'danger' : 'success',
+            hint:
+                complaints.open > 0
+                    ? `${Math.round((complaints.overdue / complaints.open) * 100)}% of open work`
+                    : 'Nothing overdue',
+        },
+        {
+            label: 'Avg. resolution',
+            value: avgResolutionDays == null ? '—' : `${avgResolutionDays}d`,
+            hint: 'Across the last 500 resolutions',
+        },
+    ]
+
+    const secondary: Stat[] = [
+        ...(inbox.total > 0
+            ? [
+                  {
+                      label: 'Escalated to you',
+                      value: inbox.total,
+                      tone: 'escalate' as const,
+                      hint: 'A deadline was missed below you',
+                      href: '/admin/escalations',
+                  },
+              ]
+            : []),
+        ...(complaints.awaitingVerification > 0
+            ? [
+                  {
+                      label: 'Awaiting inspection',
+                      value: complaints.awaitingVerification,
+                      hint: 'Crews reported done, officers must verify',
+                  },
+              ]
+            : []),
+    ]
+
     const quickLinks = [
         { href: '/admin/map', label: 'Map', icon: MapIcon, show: true },
-        { href: '/admin/sectors', label: 'Sector risk', icon: MapPin, show: true },
+        { href: '/admin/org', label: 'My patch', icon: MapPin, show: true },
         { href: '/admin/complaints', label: 'All complaints', icon: ClipboardList, show: true },
         { href: '/admin/org', label: 'Org chart', icon: Network, show: isSeniorOfficer(user.rank) },
         { href: '/admin/departments', label: 'Departments', icon: Landmark, show: isAuthorityWide(user.rank) },
@@ -123,70 +175,18 @@ export default async function AdminDashboardPage() {
     return (
         <div>
             <PageHeader
+                eyebrow={`${viewer.designationTitle ?? viewer.rankLabel} · ${viewer.scopeLabel}`}
                 title="Overview"
-                description={`${viewer.designationTitle ?? viewer.rankLabel} · ${viewer.scopeLabel}`}
             />
 
-            <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <StatTile
-                    label="Complaints"
-                    value={complaints.total}
-                    hint={`${people.citizens} registered citizens`}
-                    icon={<ClipboardList className="h-6 w-6" />}
-                />
-                <StatTile
-                    label="Currently open"
-                    value={complaints.open}
-                    tone={complaints.open > 0 ? 'warning' : 'default'}
-                    hint={`${people.officers} officers · ${people.workers} workers`}
-                    icon={<Clock className="h-6 w-6" />}
-                />
-                <StatTile
-                    label="Past deadline"
-                    value={complaints.overdue}
-                    tone={complaints.overdue > 0 ? 'danger' : 'success'}
-                    hint={
-                        complaints.open > 0
-                            ? `${Math.round((complaints.overdue / complaints.open) * 100)}% of open work`
-                            : 'Nothing overdue'
-                    }
-                    icon={<TriangleAlert className="h-6 w-6" />}
-                />
-                <StatTile
-                    label="Avg. resolution"
-                    value={avgResolutionDays == null ? '—' : `${avgResolutionDays}d`}
-                    hint="Across the last 500 resolutions"
-                    icon={<Zap className="h-6 w-6" />}
-                />
-            </div>
-
-            {(inbox.total > 0 || complaints.awaitingVerification > 0) && (
-                <div className="mb-6 grid gap-3 sm:grid-cols-2">
-                    {inbox.total > 0 && (
-                        <StatTile
-                            label="Escalated to you"
-                            value={inbox.total}
-                            tone="purple"
-                            hint="A deadline was missed below you"
-                            icon={<ArrowUpCircle className="h-6 w-6" />}
-                            href="/admin/escalations"
-                        />
-                    )}
-                    {complaints.awaitingVerification > 0 && (
-                        <StatTile
-                            label="Awaiting inspection"
-                            value={complaints.awaitingVerification}
-                            hint="Crews reported done, officers must verify"
-                            icon={<SearchCheck className="h-6 w-6" />}
-                        />
-                    )}
-                </div>
-            )}
+            <StatStrip className="mb-4" stats={headline} />
+            {secondary.length > 0 && <StatStrip className="mb-6" stats={secondary} />}
 
             <div className="grid gap-5 lg:grid-cols-3">
                 <div className="space-y-5 lg:col-span-2">
-                    <Card className="p-5">
-                        <SectionHeading
+                    <Panel flush>
+                        <PanelHeader
+                            sunken
                             title="Risk review queue"
                             description={
                                 stats.pendingFlags === 0
@@ -201,85 +201,102 @@ export default async function AdminDashboardPage() {
                         />
 
                         {queue.items.length === 0 ? (
-                            <div className="rounded-lg bg-emerald-50 px-4 py-6 text-center">
-                                <p className="text-sm font-medium text-emerald-800">All clear</p>
-                                <p className="mt-0.5 text-xs text-emerald-700">
-                                    Nothing is currently above the threshold.
-                                </p>
-                            </div>
+                            <p className="px-4 py-10 text-center text-sm text-[color:var(--muted-foreground)]">
+                                All clear — nothing is currently above the threshold.
+                            </p>
                         ) : (
-                            <ul className="divide-y divide-[color:var(--border)]">
-                                {queue.items.slice(0, 4).map((flag) => (
-                                    <li key={flag.id}>
-                                        <Link
-                                            href="/admin/risk"
-                                            className="-mx-2 flex items-start gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-[color:var(--muted)]"
+                            <table className="w-full border-collapse text-sm">
+                                <caption className="sr-only">
+                                    Highest-scoring entities awaiting review
+                                </caption>
+                                <tbody className="divide-y divide-[color:var(--border)]">
+                                    {queue.items.slice(0, 5).map((flag) => (
+                                        <tr
+                                            key={flag.id}
+                                            className="transition-colors hover:bg-[color:var(--sunken)]"
                                         >
-                                            <RiskBadge band={flag.band} score={flag.score} />
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate text-sm font-medium">{flag.entityLabel}</p>
-                                                <p className="mt-0.5 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
-                                                    {flag.reason}
-                                                </p>
-                                            </div>
-                                        </Link>
-                                    </li>
-                                ))}
-                            </ul>
+                                            <td className="w-28 px-4 py-3 align-top">
+                                                <RiskBadge band={flag.band} score={flag.score} />
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <Link href="/admin/risk" className="block">
+                                                    <span className="block truncate font-medium">
+                                                        {flag.entityLabel}
+                                                    </span>
+                                                    <span className="mt-0.5 block text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                                                        {flag.reason}
+                                                    </span>
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         )}
-                    </Card>
+                    </Panel>
 
-                    <Card className="p-5">
-                        <SectionHeading title="Where complaints stand" />
+                    <Panel>
+                        <PanelHeader title="Where complaints stand" className="mb-4" />
                         <StatusFunnel byStatus={complaints.byStatus} total={complaints.total} />
-                    </Card>
+                    </Panel>
 
                     {worstSectors.length > 0 && (
-                        <Card className="p-5">
-                            <SectionHeading
+                        <Panel flush>
+                            <PanelHeader
+                                sunken
                                 title="Sectors needing attention"
                                 description="Ordered by how much work is past its deadline."
                                 action={
                                     <Button asChild size="sm" variant="outline">
-                                        <Link href="/admin/sectors">All sectors</Link>
+                                        <Link href="/admin/org">Open the tree</Link>
                                     </Button>
                                 }
                             />
                             <div className="overflow-x-auto">
-                                <table className="w-full min-w-[420px] text-left text-sm">
+                                <table className="w-full min-w-[420px] border-collapse text-left text-sm">
                                     <thead>
-                                        <tr className="border-b border-[color:var(--border)] text-xs text-[color:var(--muted-foreground)]">
-                                            <th className="pb-2 pr-3 font-medium">Sector</th>
-                                            <th className="pb-2 pr-3 text-right font-medium">Open</th>
-                                            <th className="pb-2 pr-3 text-right font-medium">Overdue</th>
-                                            <th className="pb-2 text-right font-medium">Escalated</th>
+                                        <tr className="border-b border-[color:var(--border)]">
+                                            <th scope="col" className="label-cap px-4 py-2.5">
+                                                Sector
+                                            </th>
+                                            <th scope="col" className="label-cap px-4 py-2.5 text-right">
+                                                Open
+                                            </th>
+                                            <th scope="col" className="label-cap px-4 py-2.5 text-right">
+                                                Overdue
+                                            </th>
+                                            <th scope="col" className="label-cap px-4 py-2.5 text-right">
+                                                Escalated
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="tnum divide-y divide-[color:var(--border)]">
                                         {worstSectors.map((s) => (
                                             <tr key={s.sectorId}>
-                                                <td className="py-2 pr-3">
+                                                <td className="px-4 py-3">
                                                     <span className="font-medium">Sector {s.number}</span>
                                                     <span className="ml-1.5 text-xs text-[color:var(--muted-foreground)]">
                                                         {s.circle}
                                                     </span>
                                                 </td>
-                                                <td className="py-2 pr-3 text-right">{s.open}</td>
+                                                <td className="px-4 py-3 text-right">{s.open}</td>
                                                 <td
-                                                    className={
+                                                    className={cn(
+                                                        'px-4 py-3 text-right',
                                                         s.overdue > 0
-                                                            ? 'py-2 pr-3 text-right font-semibold text-red-600'
-                                                            : 'py-2 pr-3 text-right opacity-50'
-                                                    }
+                                                            ? 'font-semibold text-[color:var(--error)]'
+                                                            : 'text-[color:var(--subtle-foreground)]',
+                                                    )}
                                                 >
                                                     {s.overdue}
                                                 </td>
                                                 <td
-                                                    className={
+                                                    className={cn(
+                                                        'px-4 py-3 text-right',
                                                         s.escalated > 0
-                                                            ? 'py-2 text-right font-semibold text-purple-700'
-                                                            : 'py-2 text-right opacity-50'
-                                                    }
+                                                            ? 'font-semibold text-[color:var(--escalate)]'
+                                                            : 'text-[color:var(--subtle-foreground)]',
+                                                    )}
                                                 >
                                                     {s.escalated}
                                                 </td>
@@ -288,62 +305,50 @@ export default async function AdminDashboardPage() {
                                     </tbody>
                                 </table>
                             </div>
-                        </Card>
+                        </Panel>
                     )}
                 </div>
 
                 <aside className="space-y-5">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-sm">By department</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {departmentBreakdown.length === 0 ? (
-                                <p className="text-sm text-[color:var(--muted-foreground)]">
-                                    No routed complaints yet.
-                                </p>
-                            ) : (
-                                <ul className="space-y-2.5">
-                                    {departmentBreakdown.map((dept) => (
-                                        <li key={dept.departmentId}>
-                                            <div className="flex items-baseline justify-between text-sm">
-                                                <span className="truncate font-medium">
-                                                    <span aria-hidden>{dept.icon}</span> {dept.name}
-                                                </span>
-                                                <span className="tnum ml-2 text-[color:var(--muted-foreground)]">
-                                                    {dept.count}
-                                                </span>
-                                            </div>
-                                            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[color:var(--muted)]">
-                                                <div
-                                                    className="h-full rounded-full bg-[color:var(--primary)]"
-                                                    style={{ width: `${(dept.count / maxDept) * 100}%` }}
-                                                />
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
-                        </CardContent>
-                    </Card>
+                    <Panel>
+                        <PanelHeader title="By department" className="mb-4" />
+                        {departmentBreakdown.length === 0 ? (
+                            <p className="text-sm text-[color:var(--muted-foreground)]">
+                                No routed complaints yet.
+                            </p>
+                        ) : (
+                            <div className="space-y-3">
+                                {departmentBreakdown.map((dept) => (
+                                    <MeterRow
+                                        key={dept.departmentId}
+                                        label={
+                                            <>
+                                                <span aria-hidden>{dept.icon}</span> {dept.name}
+                                            </>
+                                        }
+                                        value={dept.count}
+                                        max={maxDept}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </Panel>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-sm">Jump to</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-1">
+                    <Panel flush>
+                        <PanelHeader sunken title="Jump to" />
+                        <div className="p-2">
                             {quickLinks.map((link) => (
                                 <Link
-                                    key={link.href}
+                                    key={`${link.href}-${link.label}`}
                                     href={link.href}
-                                    className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-[color:var(--muted)]"
+                                    className="flex items-center gap-2.5 rounded-[var(--radius-lg)] px-3 py-2 text-sm font-medium transition-colors hover:bg-[color:var(--sunken)]"
                                 >
                                     <link.icon className="h-4 w-4 text-[color:var(--muted-foreground)]" />
                                     {link.label}
                                 </Link>
                             ))}
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </Panel>
                 </aside>
             </div>
         </div>

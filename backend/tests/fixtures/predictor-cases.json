@@ -1,0 +1,198 @@
+[
+  {
+    "prefix": [
+      "SUBMITTED"
+    ],
+    "expectedAction": "ASSIGNED",
+    "expectedProbability": 0.89178618,
+    "expectedSupport": 2301
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED"
+    ],
+    "expectedAction": "IN_PROGRESS",
+    "expectedProbability": 0.71588694,
+    "expectedSupport": 2052
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED",
+      "IN_PROGRESS"
+    ],
+    "expectedAction": "AWAITING_VERIFICATION",
+    "expectedProbability": 0.941456773,
+    "expectedSupport": 1469
+  },
+  {
+    "prefix": [
+      "SUBMITTED"
+    ],
+    "expectedAction": "ASSIGNED",
+    "expectedProbability": 0.89178618,
+    "expectedSupport": 2301
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED"
+    ],
+    "expectedAction": "IN_PROGRESS",
+    "expectedProbability": 0.71588694,
+    "expectedSupport": 2052
+  },
+  {
+    "prefix": [
+      "SUBMITTED"
+    ],
+    "expectedAction": "ASSIGNED",
+    "expectedProbability": 0.89178618,
+    "expectedSupport": 2301
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED"
+    ],
+    "expectedAction": "IN_PROGRESS",
+    "expectedProbability": 0.71588694,
+    "expectedSupport": 2052
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED",
+      "IN_PROGRESS"
+    ],
+    "expectedAction": "AWAITING_VERIFICATION",
+    "expectedProbability": 0.941456773,
+    "expectedSupport": 1469
+  },
+  {
+    "prefix": [
+      "SUBMITTED"
+    ],
+    "expectedAction": "ASSIGNED",
+    "expectedProbability": 0.89178618,
+    "expectedSupport": 2301
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED"
+    ],
+    "expectedAction": "IN_PROGRESS",
+    "expectedProbability": 0.71588694,
+    "expectedSupport": 2052
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED",
+      "IN_PROGRESS"
+    ],
+    "expectedAction": "AWAITING_VERIFICATION",
+    "expectedProbability": 0.941456773,
+    "expectedSupport": 1469
+  },
+  {
+    "prefix": [
+      "SUBMITTED"
+    ],
+    "expectedAction": "ASSIGNED",
+    "expectedProbability": 0.89178618,
+    "expectedSupport": 2301
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED"
+    ],
+    "expectedAction": "IN_PROGRESS",
+    "expectedProbability": 0.71588694,
+    "expectedSupport": 2052
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED",
+      "IN_PROGRESS"
+    ],
+    "expectedAction": "AWAITING_VERIFICATION",
+    "expectedProbability": 0.941456773,
+    "expectedSupport": 1469
+  },
+  {
+    "prefix": [
+      "SUBMITTED"
+    ],
+    "expectedAction": "ASSIGNED",
+    "expectedProbability": 0.89178618,
+    "expectedSupport": 2301
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED"
+    ],
+    "expectedAction": "IN_PROGRESS",
+    "expectedProbability": 0.71588694,
+    "expectedSupport": 2052
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED",
+      "IN_PROGRESS"
+    ],
+    "expectedAction": "AWAITING_VERIFICATION",
+    "expectedProbability": 0.941456773,
+    "expectedSupport": 1469
+  },
+  {
+    "prefix": [
+      "SUBMITTED"
+    ],
+    "expectedAction": "ASSIGNED",
+    "expectedProbability": 0.89178618,
+    "expectedSupport": 2301
+  },
+  {
+    "prefix": [
+      "SUBMITTED",
+      "ASSIGNED"
+    ],
+    "expectedAction": "IN_PROGRESS",
+    "expectedProbability": 0.71588694,
+    "expectedSupport": 2052
+  },
+  {
+    "prefix": [
+      "AWAITING_VERIFICATION"
+    ],
+    "expectedAction": "RESOLVED",
+    "expectedProbability": 0.606132075,
+    "expectedSupport": 2120
+  },
+  {
+    "prefix": [
+      "AWAITING_VERIFICATION",
+      "ASSIGNED"
+    ],
+    "expectedAction": "RESOLVED",
+    "expectedProbability": 1.0,
+    "expectedSupport": 8
+  },
+  {
+    "prefix": [
+      "AWAITING_VERIFICATION",
+      "ASSIGNED",
+      "RESOLVED"
+    ],
+    "expectedAction": "CLOSED",
+    "expectedProbability": 0.5,
+    "expectedSupport": 8
+  }
+]

@@ -32,7 +32,7 @@ function StarRating({ value, onChange }: { value: number; onChange: (n: number) 
                             'h-7 w-7',
                             n <= (hovered || value)
                                 ? 'fill-amber-400 text-amber-400'
-                                : 'text-slate-300',
+                                : 'text-[color:var(--subtle-foreground)]',
                         )}
                     />
                 </button>

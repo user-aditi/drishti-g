@@ -2,25 +2,29 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, CircleCheck, Compass, Landmark, Loader2, MapPin, Ruler } from 'lucide-react'
+import { CircleCheck, Compass, Landmark, Loader2, MapPin } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { messageFrom } from '@/lib/api-error'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import { Panel } from '@/components/shared/surface'
+import { Segmented, Toolbar } from '@/components/shared/controls'
+import { DataTable, RowTitle, type Column } from '@/components/shared/data-table'
 import { EmptyState, ErrorBanner, SectionHeading } from '@/components/shared/page-header'
+import { RiskBadge } from '@/components/shared/status-badge'
 import { RiskDial, RiskExplanation, RiskWorking } from '@/components/shared/risk-explanation'
 import { formatDateTime, relativeTime } from '@/lib/format'
-import { cn } from '@/lib/utils'
 import type { ReviewStatus, RiskDetail, RiskEntityType, RiskFlag } from '@/types'
 
 const ENTITY_ICON: Record<RiskEntityType, typeof MapPin> = {
+    // One icon for every layer of the tree: a sector and the whole city are the
+    // same kind of thing here, scored the same way.
+    ORG_UNIT: MapPin,
+    DEPARTMENT: Landmark,
+    // Historical rows only.
     SECTOR: MapPin,
     CIRCLE: Compass,
     ZONE: Landmark,
-    DEPARTMENT: Landmark,
-    CONTRACTOR: Building2,
-    PROJECT: Ruler,
 }
 
 const REVIEW_ACTIONS: {
@@ -34,29 +38,31 @@ const REVIEW_ACTIONS: {
     { status: 'DISMISSED', label: 'Dismiss', hint: 'Not a real concern', variant: 'outline' },
 ]
 
-const TABS: { key: ReviewStatus; label: string }[] = [
-    { key: 'PENDING', label: 'Needs review' },
-    { key: 'ACKNOWLEDGED', label: 'Acknowledged' },
-    { key: 'ACTIONED', label: 'Actioned' },
-    { key: 'DISMISSED', label: 'Dismissed' },
+const TABS: { value: ReviewStatus; label: string }[] = [
+    { value: 'PENDING', label: 'Needs review' },
+    { value: 'ACKNOWLEDGED', label: 'Acknowledged' },
+    { value: 'ACTIONED', label: 'Actioned' },
+    { value: 'DISMISSED', label: 'Dismissed' },
 ]
 
-function FlagCard({ flag, onReviewed }: { flag: RiskFlag; onReviewed: () => void }) {
-    const [expanded, setExpanded] = useState(false)
+/**
+ * The reasoning behind one flag, and the decision it is waiting for.
+ *
+ * The full working is only fetched when someone opens the row — the queue
+ * itself already carries enough to triage.
+ */
+function FlagReview({ flag, onReviewed }: { flag: RiskFlag; onReviewed: () => void }) {
     const [detail, setDetail] = useState<RiskDetail | null>(null)
     const [note, setNote] = useState('')
     const [busy, setBusy] = useState<ReviewStatus | null>(null)
     const [error, setError] = useState<string | null>(null)
 
-    // The full working is only fetched when someone opens the card — the queue
-    // itself already carries enough to triage.
     useEffect(() => {
-        if (!expanded || detail) return
         apiClient
             .riskDetail(flag.entityType, flag.entityId)
             .then(setDetail)
             .catch(() => setDetail(null))
-    }, [expanded, detail, flag.entityType, flag.entityId])
+    }, [flag.entityType, flag.entityId])
 
     async function review(status: ReviewStatus) {
         setBusy(status)
@@ -71,96 +77,79 @@ function FlagCard({ flag, onReviewed }: { flag: RiskFlag; onReviewed: () => void
         }
     }
 
-    const Icon = ENTITY_ICON[flag.entityType] ?? MapPin
-
     return (
-        <Card className="overflow-hidden">
-            <div className="flex flex-wrap items-start gap-4 p-5">
-                <RiskDial score={flag.score} band={flag.band} size={88} />
-
-                <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-[color:var(--muted-foreground)]" />
-                        <h3 className="truncate font-semibold">{flag.entityLabel}</h3>
-                    </div>
-
-                    <p className="mt-1.5 text-sm leading-relaxed">{flag.reason}</p>
-
-                    <p className="mt-2 text-xs text-[color:var(--muted-foreground)]">
-                        Flagged {relativeTime(flag.createdAt)}
-                        {flag.updatedAt !== flag.createdAt && ` · updated ${relativeTime(flag.updatedAt)}`}
-                    </p>
-
-                    <button
-                        onClick={() => setExpanded((v) => !v)}
-                        aria-expanded={expanded}
-                        className="mt-3 text-sm font-medium text-[color:var(--primary)] hover:underline"
-                    >
-                        {expanded ? 'Hide the reasoning' : 'Why was this flagged?'}
-                    </button>
-                </div>
+        <div className="grid gap-5 lg:grid-cols-[auto_1fr]">
+            <div className="flex justify-center lg:justify-start">
+                <RiskDial score={flag.score} band={flag.band} size={104} />
             </div>
 
-            {expanded && (
-                <div className="space-y-5 border-t border-[color:var(--border)] bg-[color:var(--muted)]/60 p-5">
+            <div className="min-w-0 space-y-5">
+                <div>
+                    <SectionHeading title="Contributing factors" />
+                    <RiskExplanation factors={flag.factors} score={flag.score} band={flag.band} />
+                </div>
+
+                {detail && (
                     <div>
-                        <SectionHeading title="Contributing factors" />
-                        <RiskExplanation factors={flag.factors} score={flag.score} band={flag.band} />
-                    </div>
-
-                    {detail && (
-                        <div>
-                            <SectionHeading
-                                title="The arithmetic"
-                                description="Every number that produced this score, so you can check it yourself."
-                            />
-                            <RiskWorking factors={detail.factors} score={detail.score} />
-                            <p className="mt-3 text-xs text-[color:var(--muted-foreground)]">
-                                Model <span className="font-mono">{detail.modelVersion}</span> · computed{' '}
-                                {formatDateTime(detail.computedAt)}
-                            </p>
-                        </div>
-                    )}
-
-                    <div className="border-t border-[color:var(--border)] pt-4">
                         <SectionHeading
-                            title="Your decision"
-                            description="Recorded in the audit trail against your name."
+                            title="The arithmetic"
+                            description="Every number that produced this score, so you can check it yourself."
                         />
+                        <RiskWorking factors={detail.factors} score={detail.score} />
+                        <p className="mt-3 text-xs text-[color:var(--muted-foreground)]">
+                            Model <span className="font-mono">{detail.modelVersion}</span> · computed{' '}
+                            {formatDateTime(detail.computedAt)}
+                        </p>
+                    </div>
+                )}
 
-                        {error && <ErrorBanner message={error} />}
+                <div className="border-t border-[color:var(--border)] pt-4">
+                    <SectionHeading
+                        title="Your decision"
+                        description="Recorded in the audit trail against your name."
+                    />
 
-                        <Textarea
-                            rows={2}
-                            maxLength={2000}
-                            className="mb-3"
-                            placeholder="Optional note — what did you find, what did you do?"
-                            value={note}
-                            onChange={(e) => setNote(e.target.value)}
-                        />
+                    {error && <ErrorBanner message={error} />}
 
-                        <div className="flex flex-wrap gap-2">
-                            {REVIEW_ACTIONS.map((action) => (
-                                <Button
-                                    key={action.status}
-                                    size="sm"
-                                    variant={action.variant}
-                                    onClick={() => void review(action.status)}
-                                    disabled={busy !== null}
-                                    title={action.hint}
-                                >
-                                    {busy === action.status && <Loader2 className="animate-spin" />}
-                                    {action.label}
-                                </Button>
-                            ))}
-                        </div>
+                    <Textarea
+                        rows={2}
+                        maxLength={2000}
+                        className="mb-3"
+                        placeholder="Optional note — what did you find, what did you do?"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                        {REVIEW_ACTIONS.map((action) => (
+                            <Button
+                                key={action.status}
+                                size="sm"
+                                variant={action.variant}
+                                onClick={() => void review(action.status)}
+                                disabled={busy !== null}
+                                title={action.hint}
+                            >
+                                {busy === action.status && <Loader2 className="animate-spin" />}
+                                {action.label}
+                            </Button>
+                        ))}
                     </div>
                 </div>
-            )}
-        </Card>
+            </div>
+        </div>
     )
 }
 
+/**
+ * The risk radar, as a queue.
+ *
+ * Each flag used to be a card carrying a dial, a paragraph and a hidden panel,
+ * which meant four flags filled a screen and comparing scores meant scrolling.
+ * A supervisor's actual question is "what is worst, and has anyone dealt with
+ * it" — a sort down a score column. The dial and the full working still exist,
+ * unchanged, in the row's expansion, where they are read one at a time anyway.
+ */
 export function RiskQueueClient({
     flags: initialFlags,
     threshold,
@@ -173,6 +162,8 @@ export function RiskQueueClient({
     const router = useRouter()
     const [flags, setFlags] = useState(initialFlags)
     const [status, setStatus] = useState<ReviewStatus>('PENDING')
+    const [search, setSearch] = useState('')
+    const [openId, setOpenId] = useState<string | number | null>(null)
     const [loading, setLoading] = useState(false)
     const [recomputing, setRecomputing] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -181,6 +172,7 @@ export function RiskQueueClient({
 
     async function load(next: ReviewStatus) {
         setStatus(next)
+        setOpenId(null)
         setLoading(true)
         try {
             const res = await apiClient.riskQueueByStatus(next)
@@ -205,41 +197,87 @@ export function RiskQueueClient({
         }
     }
 
+    const columns: Column<RiskFlag>[] = [
+        {
+            key: 'entity',
+            header: 'What was flagged',
+            value: (f) => f.entityLabel,
+            cell: (f) => {
+                const Icon = ENTITY_ICON[f.entityType] ?? MapPin
+                return (
+                    <div className="flex items-center gap-2.5">
+                        <Icon className="h-4 w-4 shrink-0 text-[color:var(--muted-foreground)]" aria-hidden />
+                        <RowTitle>{f.entityLabel}</RowTitle>
+                    </div>
+                )
+            },
+        },
+        {
+            key: 'score',
+            header: 'Score',
+            align: 'right',
+            width: 'w-32',
+            value: (f) => f.score,
+            cell: (f) => <RiskBadge band={f.band} score={f.score} />,
+        },
+        {
+            key: 'reason',
+            header: 'Why',
+            value: (f) => f.reason,
+            cell: (f) => (
+                <p className="line-clamp-2 max-w-lg text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                    {f.reason}
+                </p>
+            ),
+        },
+        {
+            key: 'flagged',
+            header: 'Flagged',
+            align: 'right',
+            secondary: true,
+            value: (f) => new Date(f.createdAt).getTime(),
+            cell: (f) => (
+                <span className="text-xs text-[color:var(--muted-foreground)]">
+                    {relativeTime(f.createdAt)}
+                </span>
+            ),
+        },
+    ]
+
     return (
         <div>
-            {canAct && (
-                <div className="mb-5 flex justify-end">
-                    <Button variant="outline" onClick={() => void recompute()} disabled={recomputing}>
-                        {recomputing && <Loader2 className="animate-spin" />}
-                        {recomputing ? 'Recomputing…' : 'Recompute scores'}
-                    </Button>
-                </div>
-            )}
-
             {error && <ErrorBanner message={error} />}
 
-            <div className="mb-5 flex flex-wrap gap-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--card)] p-1">
-                {TABS.map(({ key, label }) => (
-                    <button
-                        key={key}
-                        onClick={() => void load(key)}
-                        className={cn(
-                            'flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                            status === key
-                                ? 'bg-[color:var(--primary)] text-white'
-                                : 'text-[color:var(--muted-foreground)] hover:bg-[color:var(--muted)]',
-                        )}
-                    >
-                        {label}
-                    </button>
-                ))}
-            </div>
+            <Segmented
+                label="Review state"
+                value={status}
+                onChange={(v) => void load(v)}
+                options={TABS}
+            />
+
+            <Toolbar
+                search={search}
+                onSearch={setSearch}
+                placeholder="Search what has been flagged"
+                actions={
+                    canAct && (
+                        <Button
+                            variant="outline"
+                            onClick={() => void recompute()}
+                            disabled={recomputing}
+                        >
+                            {recomputing && <Loader2 className="animate-spin" />}
+                            {recomputing ? 'Recomputing…' : 'Recompute scores'}
+                        </Button>
+                    )
+                }
+            />
 
             {loading ? (
-                <p className="text-sm text-[color:var(--muted-foreground)]">Loading…</p>
+                <Panel className="text-sm text-[color:var(--muted-foreground)]">Loading…</Panel>
             ) : flags.length === 0 ? (
                 <EmptyState
-                    icon={<CircleCheck className="h-10 w-10" />}
+                    icon={<CircleCheck className="h-6 w-6" />}
                     title={status === 'PENDING' ? 'Nothing needs review' : 'Nothing here'}
                     description={
                         status === 'PENDING'
@@ -248,11 +286,26 @@ export function RiskQueueClient({
                     }
                 />
             ) : (
-                <div className="space-y-4">
-                    {flags.map((flag) => (
-                        <FlagCard key={flag.id} flag={flag} onReviewed={() => void load(status)} />
-                    ))}
-                </div>
+                <DataTable
+                    rows={flags}
+                    columns={columns}
+                    getRowId={(f) => f.id}
+                    search={search}
+                    initialSort={{ key: 'score', direction: 'desc' }}
+                    rowTone={(f) =>
+                        f.band === 'SEVERE' ? 'danger' : f.band === 'HIGH' ? 'warning' : null
+                    }
+                    empty="No flags match that."
+                    footnote={`Anything scoring ${threshold} or above is put in front of a human.`}
+                    expansion={{
+                        openId,
+                        onToggle: setOpenId,
+                        label: (f) => `Why ${f.entityLabel} was flagged`,
+                        render: (f) => (
+                            <FlagReview flag={f} onReviewed={() => void load(status)} />
+                        ),
+                    }}
+                />
             )}
         </div>
     )

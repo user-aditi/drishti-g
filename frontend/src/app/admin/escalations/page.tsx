@@ -34,7 +34,7 @@ export default async function EscalationsPage() {
 
             {inbox.items.length === 0 ? (
                 <EmptyState
-                    icon={<CircleCheck className="h-10 w-10" />}
+                    icon={<CircleCheck className="h-6 w-6" />}
                     title="Nothing escalated to you"
                     description="When a complaint below you passes its deadline it lands here with the reason."
                 />

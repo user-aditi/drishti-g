@@ -25,6 +25,20 @@ datasource db {
 ///
 /// Escalation walks this ladder upward, so the order matters. `RANK_LEVEL` in
 /// src/services/hierarchy.ts is the numeric mapping and must stay in step.
+/// What a person is allowed to do, independent of where they sit.
+///
+/// Replaces the eight-value `Rank` ladder. Seniority is no longer an enum — it
+/// is depth in the org tree, so adding a layer never needs a new value here.
+/// An OFFICER's authority is exactly the subtree beneath their posting.
+enum Role {
+  CITIZEN //     the public
+  OFFICER //     anyone posted to a unit, at any depth
+  SUPER_ADMIN // system owner; configures the tree itself
+}
+
+/// DEPRECATED — superseded by `Role` plus the org tree. Retained only so the
+/// frontend and older routes keep compiling during the migration; nothing new
+/// should read it. Tracked in docs/pending-work.md.
 enum Rank {
   CITIZEN //         0 — the public
   FIELD_WORKER //    1 — safai karamchari, lineman, beldar: does the physical work
@@ -53,6 +67,30 @@ enum Trade {
   PLUMBER //          water and sewer lines
   MALI //             horticulture
   DRIVER //           vehicle operator
+}
+
+/// Where a work order is in its life.
+enum WorkOrderStatus {
+  ISSUED //     code generated, nobody has opened it
+  OPENED //     a worker has opened the link
+  SUBMITTED //  proof uploaded, verification pending
+  VERIFIED //   accepted
+  REJECTED //   verification or an officer rejected it
+  CANCELLED //  withdrawn by the officer
+}
+
+/// What the verification pipeline concluded, and who it needs next.
+enum VerificationOutcome {
+  AUTO_APPROVED //  strong enough to close without asking anyone
+  NEEDS_CITIZEN //  plausible; the person who reported it should confirm
+  NEEDS_OFFICER //  weak, disputed, or the citizen went quiet
+  REJECTED //       failed outright - recycled or stale proof
+}
+
+enum WorkFileKind {
+  IMAGE
+  VIDEO
+  DOCUMENT
 }
 
 /// Whether a department is live or still on the roadmap.
@@ -84,6 +122,22 @@ enum Priority {
   CRITICAL
 }
 
+/// Which judgement a Decision row records.
+enum DecisionKind {
+  CATEGORY //    what this complaint is about
+  ROUTE //       who should hold it
+  PRIORITY //    how urgent it is
+  NEXT_ACTION // what should happen next (the autonomy gate, from wave 4)
+}
+
+/// What became of a judgement once a human met it.
+enum DecisionOutcome {
+  PENDING //       nobody has agreed or disagreed yet
+  CONFIRMED //     a person saw it and let it stand
+  OVERRIDDEN //    a person replaced it
+  AUTO_EXECUTED // acted on without review, by the autonomy gate
+}
+
 enum RiskBand {
   LOW //      0-39
   MODERATE // 40-59
@@ -92,12 +146,20 @@ enum RiskBand {
 }
 
 enum RiskEntityType {
-  SECTOR
-  CIRCLE
-  ZONE
+  /// Any unit of the org tree — a sector, a zone, the whole city. One type
+  /// covers every depth, because scoring an area does not change with how deep
+  /// it sits; only the saturation threshold does, and that scales with how many
+  /// ground-floor units sit beneath it.
+  ORG_UNIT
+
   DEPARTMENT
   CONTRACTOR
   PROJECT
+
+  /// DEPRECATED — historical rows only, superseded by ORG_UNIT.
+  SECTOR
+  CIRCLE
+  ZONE
 }
 
 enum ReviewStatus {
@@ -157,17 +219,112 @@ model Sector {
   centroidLat Float?
   centroidLon Float?
 
-  circle     Circle      @relation(fields: [circleId], references: [id])
+  circle     Circle             @relation(fields: [circleId], references: [id])
   residents  User[]
   complaints Complaint[]
   postings   Posting[]
   projects   Project[]
+  crew       Crew[]
+  clusters   GrievanceCluster[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([circleId])
   @@map("sectors")
+}
+
+// ---------------------------------------------------------------------------
+// The org tree
+//
+// One recursive table replaces the old Zone -> Circle -> Sector tables and the
+// JurisdictionLevel enum. Depth is data, not code: the super admin adds a layer
+// the way you make a directory, and escalation is a walk up `parentId`.
+//
+// Root (depth 0) is the whole city. A leaf is the unit nearest the citizen and
+// is the only place work is actually dispatched from.
+// ---------------------------------------------------------------------------
+
+model OrgUnit {
+  id     Int     @id @default(autoincrement())
+  code   String  @unique
+  name   String
+  nameHi String?
+
+  parentId Int?
+  parent   OrgUnit?  @relation("OrgUnitTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children OrgUnit[] @relation("OrgUnitTree")
+
+  /// 0 for the root. Kept denormalised so a layer can be queried without
+  /// recursing, and validated against `parent.depth + 1` on every write.
+  depth Int
+
+  /// Materialised path of ancestor ids, e.g. "/1/4/12/". Subtree rollups are
+  /// `path STARTS WITH '/1/4/'`, which is what keeps a parent unit's dashboard
+  /// a single query instead of a recursive walk.
+  path String
+
+  /// What this layer is called here — "City", "Zone", "Sector". A label, never
+  /// an enum, so naming a new layer costs nothing.
+  kindLabel String
+
+  /// True when the unit has no children. Maintained on write; only leaves may
+  /// dispatch work orders.
+  isLeaf Boolean @default(true)
+
+  population  Int?
+  centroidLat Float?
+  centroidLon Float?
+
+  isActive Boolean @default(true)
+
+  postings   Posting[]
+  complaints Complaint[]
+  residents  User[]
+  crew       Crew[]
+
+  escalationsFrom Escalation[] @relation("EscalatedFromUnit")
+  escalationsTo   Escalation[] @relation("EscalatedToUnit")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([depth])
+  @@index([path])
+  @@map("org_units")
+}
+
+/// How deep one department operates, and how each of its layers behaves.
+///
+/// This is the feature the super admin actually drives: choosing a department's
+/// layer count and naming them. Units live on one shared spine (a sector is one
+/// row for the whole authority); a department declares which depths it uses and
+/// what its SLA and dispatch rules are at each.
+model DepartmentLayer {
+  id           Int @id @default(autoincrement())
+  departmentId Int
+  /// Matches OrgUnit.depth.
+  depth        Int
+
+  /// What this department calls the layer, e.g. "Work Circle".
+  name       String
+  namePlural String
+
+  /// Only the deepest layer normally dispatches work to crew. A parent unit
+  /// delegates to a child instead.
+  canDispatch Boolean @default(false)
+
+  /// Hours a complaint may sit at this layer before escalating to the parent.
+  slaHours Int @default(48)
+
+  /// Warn the super admin when a unit at this depth has fewer postings.
+  minPostings Int @default(1)
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, depth])
+  @@map("department_layers")
 }
 
 // ---------------------------------------------------------------------------
@@ -194,10 +351,14 @@ model Department {
   /// Sanitary Inspector in Public Health. Keyed by Rank.
   designations Designation[]
 
+  /// How many layers this department runs, and how each behaves.
+  layers DepartmentLayer[]
+
   categories ComplaintCategory[]
   postings   Posting[]
   complaints Complaint[]
   projects   Project[]
+  crew       Crew[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -235,6 +396,10 @@ model Posting {
   rank         Rank
   level        JurisdictionLevel
 
+  /// Where this posting sits on the org tree. Replaces the zone/circle/sector
+  /// trio above; those stay only until the migration finishes.
+  orgUnitId Int?
+
   // Exactly one of these is set, matching `level`. AUTHORITY postings set none.
   zoneId   Int?
   circleId Int?
@@ -256,6 +421,7 @@ model Posting {
   endedAt   DateTime?
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orgUnit    OrgUnit?    @relation(fields: [orgUnitId], references: [id], onDelete: Cascade)
   department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   zone       Zone?       @relation(fields: [zoneId], references: [id], onDelete: SetNull)
   circle     Circle?     @relation(fields: [circleId], references: [id], onDelete: SetNull)
@@ -264,6 +430,7 @@ model Posting {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([orgUnitId, departmentId, endedAt])
   @@index([departmentId, rank, sectorId])
   @@index([departmentId, rank, circleId])
   @@index([userId, endedAt])
@@ -278,16 +445,22 @@ model User {
   fullNameHi     String?
   phone          String?
 
-  /// Denormalised from the primary posting so auth and lists do not need a join.
-  /// `postings` remains the source of truth.
+  /// What this person may do. The source of truth for authorisation, alongside
+  /// the org scope their postings confer.
+  role Role @default(CITIZEN)
+
+  /// DEPRECATED — kept until every screen reads `role` and the tree instead.
   rank     Rank    @default(CITIZEN)
   isActive Boolean @default(true)
 
   /// Where a citizen lives. Officials get their patch from their posting.
   homeSectorId Int?
+  /// The leaf org unit a citizen belongs to. Replaces homeSectorId.
+  homeUnitId   Int?
 
   postings Posting[]
 
+  supportedIssues  ComplaintSupport[]
   filedComplaints  Complaint[]              @relation("ComplaintCitizen")
   ownedComplaints  Complaint[]              @relation("ComplaintOfficer")
   workerComplaints Complaint[]              @relation("ComplaintWorker")
@@ -295,14 +468,21 @@ model User {
   escalationsTo    Escalation[]             @relation("EscalatedTo")
   notifications    Notification[]
   auditEvents      AuditEvent[]
+  decisionsMade    Decision[]               @relation("DecisionActor")
+  decisionsChanged Decision[]               @relation("DecisionOverrider")
   reviewedFlags    RiskFlag[]
   inspections      Inspection[]
+  crewSupervised   Crew[]                   @relation("CrewSupervisor")
+  workOrdersIssued WorkOrder[]              @relation("WorkOrderIssuer")
+  verifications    Verification[]           @relation("VerificationReviewer")
 
-  homeSector Sector? @relation(fields: [homeSectorId], references: [id], onDelete: SetNull)
+  homeSector Sector?  @relation(fields: [homeSectorId], references: [id], onDelete: SetNull)
+  homeUnit   OrgUnit? @relation(fields: [homeUnitId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([role, isActive])
   @@index([rank, isActive])
   @@map("users")
 }
@@ -319,13 +499,21 @@ model ComplaintCategory {
   /// Comma-separated hints for GCCE's keyword classifier, including Hinglish.
   keywords        String  @default("")
   icon            String  @default("📋")
-  /// Which trade normally does this work — narrows the JE's assignment list.
+  /// Which trade normally does this work - narrows the JE's assignment list.
   trade           Trade?
+  /// How dangerous this class of problem is, 1-5.
+  ///
+  /// A live wire over a footpath and an unswept lane are both complaints; they
+  /// are not the same complaint. This is the largest single input to priority,
+  /// and it is a property of the category rather than of the words a citizen
+  /// happened to use, so it cannot be gamed by writing dramatically.
+  severity        Int     @default(2)
   isActive        Boolean @default(true)
   sortOrder       Int     @default(100)
 
-  department Department  @relation(fields: [departmentId], references: [id])
+  department Department         @relation(fields: [departmentId], references: [id])
   complaints Complaint[]
+  clusters   GrievanceCluster[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -358,6 +546,10 @@ model Complaint {
   categoryId   Int?
   departmentId Int?
   sectorId     Int?
+  /// The org unit currently holding this complaint. Starts at the leaf covering
+  /// the citizen and moves UP the tree on each escalation, so "where is it now"
+  /// is one field rather than a join through the escalation log.
+  orgUnitId    Int?
 
   /// The Section Officer (JE) accountable for this complaint. GCCE assigns
   /// here — never straight to a worker, because triage is the JE's job.
@@ -375,10 +567,33 @@ model Complaint {
   /// How many times this has been escalated up the chain.
   escalationLevel Int @default(0)
 
+  /// The urgency score behind `priority`, 0-100, and the working that produced
+  /// it. Kept so an officer can ask why a complaint outranks another one on
+  /// their desk and get an answer rather than an assertion.
+  priorityScore   Float?
+  /// [{ factor, label, raw, weight, contribution, explanation }]
+  priorityFactors Json?
+
+  /// The group of near-identical reports this belongs to, where it has one.
+  clusterId Int?
+
   duplicateOfId Int?
+
+  /// A grievance about the neighbourhood rather than one household — a choked
+  /// nala, an unlit street, an encroached park. Neighbours can add their
+  /// support to it, which is what distinguishes it from a private complaint.
+  isCommunity Boolean @default(false)
 
   feedbackRating  Int?
   feedbackComment String?
+
+  /// The citizen's verdict on the work claimed to be done. This is the
+  /// strongest verification signal the system has - the person who reported the
+  /// problem is the one who can see whether it is gone.
+  citizenConfirmed   Boolean?
+  citizenConfirmedAt DateTime?
+  /// Their own photo of the finished work, if they sent one.
+  citizenProofUrl    String?
 
   citizen         User               @relation("ComplaintCitizen", fields: [citizenId], references: [id])
   assignedOfficer User?              @relation("ComplaintOfficer", fields: [assignedOfficerId], references: [id], onDelete: SetNull)
@@ -386,21 +601,52 @@ model Complaint {
   category        ComplaintCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   department      Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   sector          Sector?            @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  orgUnit         OrgUnit?           @relation(fields: [orgUnitId], references: [id], onDelete: SetNull)
   duplicateOf     Complaint?         @relation("Duplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
   duplicates      Complaint[]        @relation("Duplicates")
 
   history     ComplaintStatusHistory[]
   escalations Escalation[]
+  supports    ComplaintSupport[]
+  workOrders  WorkOrder[]
+  decisions   Decision[]
+  cluster     GrievanceCluster?        @relation(fields: [clusterId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([orgUnitId, status])
   @@index([status, sectorId])
   @@index([citizenId])
   @@index([assignedOfficerId, status])
   @@index([assignedWorkerId, status])
   @@index([departmentId, status])
+  @@index([clusterId])
   @@map("complaints")
+}
+
+/// One resident backing a neighbour's community grievance.
+///
+/// The civic point of this: without it, twelve households report the same
+/// choked drain and the authority sees twelve unrelated complaints to close.
+/// With it, one complaint carries eleven names, and the weight of the problem
+/// is visible in the record rather than buried in the duplicate count.
+model ComplaintSupport {
+  id          Int     @id @default(autoincrement())
+  complaintId Int
+  userId      Int
+  /// Optional detail from the supporter — "same outside my gate since Monday".
+  note        String?
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  // One voice per resident per grievance.
+  @@unique([complaintId, userId])
+  @@index([complaintId])
+  @@map("complaint_supports")
 }
 
 model ComplaintStatusHistory {
@@ -418,6 +664,9 @@ model ComplaintStatusHistory {
   createdAt DateTime @default(now())
 
   @@index([complaintId])
+  /// The event log projection reads this table in time order and filters by
+  /// date range; without this it is a full scan of every transition ever made.
+  @@index([createdAt])
   @@map("complaint_status_history")
 }
 
@@ -429,8 +678,14 @@ model Escalation {
   id          Int @id @default(autoincrement())
   complaintId Int
 
-  fromRank Rank
-  toRank   Rank
+  /// Where it moved from and to on the org tree. This is the record now — an
+  /// escalation is a step from a unit to its parent, at any depth.
+  fromUnitId Int?
+  toUnitId   Int?
+
+  /// DEPRECATED — historical rows only; new escalations record units instead.
+  fromRank Rank?
+  toRank   Rank?
   /// The officer it landed on. Null when no one holds that post yet.
   toUserId Int?
 
@@ -442,12 +697,256 @@ model Escalation {
 
   complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
   toUser    User?     @relation("EscalatedTo", fields: [toUserId], references: [id], onDelete: SetNull)
+  fromUnit  OrgUnit?  @relation("EscalatedFromUnit", fields: [fromUnitId], references: [id], onDelete: SetNull)
+  toUnit    OrgUnit?  @relation("EscalatedToUnit", fields: [toUnitId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
   @@index([complaintId])
   @@index([toUserId, acknowledgedAt])
+  @@index([toUnitId])
   @@map("escalations")
+}
+
+/// Several reports of one problem.
+///
+/// Twelve households ring in about the same choked nala and the authority sees
+/// twelve complaints to close. Grouping them makes the real size of the problem
+/// visible: the cluster carries the weight of everyone in it, and every member
+/// inherits that weight in its priority.
+///
+/// Distinct from community support, which is people *endorsing* one grievance.
+/// This is people independently reporting the same thing without knowing about
+/// each other, which is the commoner case and the harder one to see.
+model GrievanceCluster {
+  id         Int  @id @default(autoincrement())
+  sectorId   Int?
+  categoryId Int?
+
+  /// A human-readable name for the group, taken from its earliest member.
+  label String
+  /// Denormalised member count - read on every priority computation.
+  size  Int    @default(1)
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  /// Set when an officer decides these are not in fact the same problem.
+  isDismissed Boolean @default(false)
+
+  sector     Sector?            @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  category   ComplaintCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  complaints Complaint[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sectorId, categoryId, isDismissed])
+  @@map("grievance_clusters")
+}
+
+// ---------------------------------------------------------------------------
+// Street-level work
+// ---------------------------------------------------------------------------
+
+/// A street-level worker - safai karamchari, lineman, beldar.
+///
+/// Deliberately *not* a User. Real municipal labour is largely contractual and
+/// rotates; issuing each person a departmental account with a password is a
+/// fiction that breaks the first time a contractor swaps their crew. What is
+/// real is that a Section Officer keeps a roll of who works their sector, and
+/// hands a specific job to a specific person. That roll is this model.
+///
+/// Everything a worker needs to do - see the job, upload proof - happens
+/// through a per-job code, so nobody has to be enrolled to be given work.
+model Crew {
+  id       Int     @id @default(autoincrement())
+  fullName String
+  phone    String?
+  trade    Trade
+
+  /// The Section Officer who keeps this person on their roll and answers for
+  /// the work. Crew belong to an officer, not to a department in the abstract.
+  supervisorId Int
+  sectorId     Int
+  /// The leaf unit this crew member works in. Replaces sectorId.
+  orgUnitId    Int?
+  departmentId Int
+  /// Set when the person comes through a contractor rather than the authority.
+  contractorId Int?
+
+  isActive Boolean @default(true)
+
+  supervisor User        @relation("CrewSupervisor", fields: [supervisorId], references: [id], onDelete: Cascade)
+  sector     Sector      @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+  orgUnit    OrgUnit?    @relation(fields: [orgUnitId], references: [id], onDelete: Cascade)
+  department Department  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  contractor Contractor? @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+
+  workOrders WorkOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([supervisorId, isActive])
+  @@index([sectorId, departmentId, trade])
+  @@map("crew")
+}
+
+/// One job handed to one worker, addressed by a code rather than a login.
+///
+/// The code is the whole point: it is printed, messaged or shown as a QR, and
+/// opening it is the worker's entire relationship with the system. It expires,
+/// because a code that lives forever is a code that leaks.
+/// How much the name on a work-order submission is worth.
+///
+/// The people doing this work are contractual and rotate weekly, so there is no
+/// account to sign in to and no identity document worth collecting on a public
+/// endpoint. These levels record what could actually be established, so an
+/// officer inspecting the work knows whether the attribution is solid or is
+/// simply whoever the slip was handed to.
+enum IdentityAssurance {
+  /// The code was worked from a device other than the one that opened it, or
+  /// from none we can recognise - typically a code read aloud down a phone.
+  NONE
+  /// The submission came from the same device that first opened the code.
+  DEVICE_BOUND
+  /// Reserved: a one-time password confirmed against Crew.phone. Not yet
+  /// issued by any code path - it exists so the column does not need widening
+  /// when an SMS gateway is procured.
+  OTP_VERIFIED
+}
+
+model WorkOrder {
+  id          Int             @id @default(autoincrement())
+  complaintId Int
+  crewId      Int?
+  /// Typed by hand or carried in a QR, e.g. "K7M2-4QX9".
+  code        String          @unique
+  status      WorkOrderStatus @default(ISSUED)
+
+  instructions String?
+  /// The Section Officer who issued it and answers for the outcome.
+  issuedById   Int
+
+  issuedAt    DateTime  @default(now())
+  openedAt    DateTime?
+  submittedAt DateTime?
+  closedAt    DateTime?
+  expiresAt   DateTime
+
+  /// SHA-256 of the token handed to the first device that opened this code.
+  ///
+  /// Street labour has no account, so there is nothing to authenticate against.
+  /// What this does buy is continuity: the phone that opened the slip is the
+  /// phone that sent the work back. It does not prove who is holding it, and it
+  /// is never used to block a submission - only to record how much the
+  /// attribution on this job is worth. See IdentityAssurance.
+  boundDeviceHash String?
+  boundAt         DateTime?
+
+  complaint    Complaint        @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  crew         Crew?            @relation(fields: [crewId], references: [id], onDelete: SetNull)
+  issuedBy     User             @relation("WorkOrderIssuer", fields: [issuedById], references: [id], onDelete: Cascade)
+  submissions  WorkSubmission[]
+  verification Verification?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([complaintId])
+  @@index([status, expiresAt])
+  @@map("work_orders")
+}
+
+/// One "I have done this" from the field: a note, a place, and some files.
+model WorkSubmission {
+  id          Int     @id @default(autoincrement())
+  workOrderId Int
+  note        String?
+
+  /// How confident the system is that the crew member named on the work order
+  /// is the person who actually sent this. Recorded rather than enforced: a
+  /// worker standing over a finished job must never be blocked because their
+  /// phone lost signal, so a weak submission is accepted and labelled instead.
+  identityAssurance IdentityAssurance @default(NONE)
+
+  /// Reported by the worker's browser, and treated as a claim rather than a
+  /// fact - the EXIF coordinates on the files are the evidence.
+  latitude  Float?
+  longitude Float?
+
+  workOrder WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  files     WorkFile[]
+
+  submittedAt DateTime @default(now())
+
+  @@index([workOrderId])
+  @@map("work_submissions")
+}
+
+model WorkFile {
+  id           Int          @id @default(autoincrement())
+  submissionId Int
+  url          String
+  kind         WorkFileKind
+  mimeType     String
+  sizeBytes    Int
+
+  /// SHA-256 of the bytes. Catches a worker re-sending the citizen's original
+  /// photo, or the same file across two jobs. It does not catch a re-encode -
+  /// perceptual hashing would, and needs an image decoder we do not carry.
+  contentHash String
+
+  /// Read out of the file's own EXIF, where it has any.
+  capturedAt DateTime?
+  exifLat    Float?
+  exifLon    Float?
+
+  /// A photograph of the worker rather than of the work.
+  ///
+  /// Deliberately excluded from every proof check: a selfie says who was
+  /// standing there, not that anything was fixed, and counting it would let a
+  /// job be closed with a photograph of somebody's face.
+  isSelfie Boolean @default(false)
+
+  submission WorkSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([submissionId])
+  @@index([contentHash])
+  @@map("work_files")
+}
+
+/// What the pipeline made of a submission, and why.
+///
+/// One per work order, rewritten as new evidence arrives (the citizen confirms,
+/// an officer overrides). `checks` holds the per-check working, so a rejection
+/// can always be explained to the person it affects.
+model Verification {
+  id          Int @id @default(autoincrement())
+  workOrderId Int @unique
+
+  /// 0-100 confidence that the work was genuinely done.
+  score   Float
+  /// [{ check, label, passed, weight, contribution, detail }]
+  checks  Json
+  outcome VerificationOutcome
+
+  /// Set when a human did end up looking at it.
+  reviewedById Int?
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  workOrder  WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  reviewedBy User?     @relation("VerificationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([outcome])
+  @@map("verifications")
 }
 
 // ---------------------------------------------------------------------------
@@ -463,6 +962,7 @@ model Contractor {
   isBlacklisted  Boolean @default(false)
 
   projects Project[]
+  crew     Crew[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -607,6 +1107,80 @@ model Notification {
 ///
 /// Each row's hash covers its own content plus the previous row's hash, so
 /// editing or deleting any historical row breaks every hash after it.
+/// Every judgement the engines make, kept as data rather than as a log line.
+///
+/// GCCE has always computed `reasons[]` and `triggered[]` and then written them
+/// into a sentence. That sentence is readable and useless: you cannot ask it how
+/// often the classifier is overruled, or what it nearly chose instead, or
+/// whether confidence predicts agreement. This table can answer all three, and
+/// it is the same table the autonomy gate will be judged from in wave 4.
+///
+/// There is precedent in this schema. `Complaint.priorityFactors` already keeps
+/// the working behind a score as JSON, for exactly the reason an officer needs
+/// to ask why one complaint outranks another and get an answer.
+///
+/// It is deliberately not the audit trail. The audit log records *that
+/// something happened*, is hash-chained, and must never be rewritten. This
+/// records *what was considered* and stays mutable, because a decision's
+/// outcome is settled later — often days later, by someone disagreeing with it.
+model Decision {
+  id   Int          @id @default(autoincrement())
+  kind DecisionKind
+
+  complaintId Int
+
+  /// The option taken, as a string so one column serves every kind: a category
+  /// id, an officer id, a priority name, an action name.
+  chosen String
+
+  /// What else was considered, ranked, with whatever score produced the
+  /// ranking: `[{ value, label, score }]`. Empty where the engine genuinely
+  /// evaluated no rivals — an empty list is a fact about the engine, and
+  /// inventing plausible alternatives to fill it would poison the training set.
+  alternatives Json
+
+  /// How sure the engine was, 0-1, or null where it has no notion of certainty.
+  /// Read the `basis` field inside `reasons` before treating it as a
+  /// probability: today's category confidence is a share of matched keywords,
+  /// not a calibrated one.
+  confidence Float?
+
+  /// The actions policy permitted in this state, once wave 2's feasibility
+  /// function exists. Null for decisions taken before it did.
+  feasibleSet Json?
+
+  /// GCCE's own explanation, preserved verbatim.
+  reasons Json
+
+  /// gcce | autonomy | api
+  source String @default("gcce")
+
+  /// The person, where one was involved. Null when an engine decided alone.
+  actorId Int?
+
+  outcome        DecisionOutcome @default(PENDING)
+  /// What it was changed to, when someone disagreed.
+  overriddenTo   String?
+  overriddenById Int?
+  /// Why, from a fixed list — free text does not aggregate into a label.
+  overrideReason String?
+
+  complaint    Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  actor        User?     @relation("DecisionActor", fields: [actorId], references: [id], onDelete: SetNull)
+  overriddenBy User?     @relation("DecisionOverrider", fields: [overriddenById], references: [id], onDelete: SetNull)
+
+  createdAt  DateTime  @default(now())
+  /// When the outcome stopped being PENDING.
+  resolvedAt DateTime?
+
+  /// "How often is each kind of judgement overruled" is the question this table
+  /// exists to answer, and it is the query the register screen runs.
+  @@index([kind, outcome])
+  @@index([complaintId])
+  @@index([createdAt])
+  @@map("decisions")
+}
+
 model AuditEvent {
   id Int @id @default(autoincrement())
 
@@ -624,11 +1198,27 @@ model AuditEvent {
   prevHash String?
   hash     String
 
-  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  /// `Restrict`, not `SetNull`, and the distinction is the whole point of this
+  /// table. `actorId` is one of the fields the hash covers, so a cascade that
+  /// nulled it would rewrite the hashed content of every entry a deleted user
+  /// ever produced — and every one of them would stop verifying, reported as
+  /// "edited after the fact", which is exactly what the schema would have done.
+  /// It is not hypothetical: 273 entries were destroyed this way in
+  /// development before the cascade was changed.
+  ///
+  /// Nothing in the product deletes a user — staff are deactivated — so this
+  /// costs nothing and refuses loudly if that ever changes.
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
 
   @@index([entityType, entityId])
   @@index([createdAt])
+  /// Every row in a valid chain points at a different predecessor. Two rows
+  /// sharing a `prevHash` means the chain forked — two writers appended to the
+  /// same head — and this turns that from silent corruption into a failed
+  /// write. `audit.record()` takes an advisory lock so it should never fire;
+  /// this is what catches the case where something appends without it.
+  @@unique([prevHash])
   @@map("audit_events")
 }

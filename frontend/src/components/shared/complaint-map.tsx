@@ -59,14 +59,18 @@ export function ComplaintMap({
     departments,
     title = 'Map',
     description = 'Where complaints are, and which sectors GRIE rates as risky.',
+    initialTotal,
 }: {
     initialPins: MapPin[]
     sectors: SectorRisk[]
     departments: Department[]
     title?: string
     description?: string
+    /** How many complaints match, which is not how many pins came back. */
+    initialTotal?: number
 }) {
     const [pins, setPins] = useState(initialPins)
+    const [total, setTotal] = useState(initialTotal ?? initialPins.length)
     const [departmentId, setDepartmentId] = useState<number | ''>('')
     const [statusFilter, setStatusFilter] = useState<'open' | 'all'>('open')
     const [showRisk, setShowRisk] = useState(true)
@@ -84,9 +88,11 @@ export function ComplaintMap({
         const params = new URLSearchParams({ status: statusFilter })
         if (departmentId !== '') params.set('departmentId', String(departmentId))
 
-        request<{ items: MapPin[] }>(`/complaints/map?${params}`)
+        request<{ items: MapPin[]; total?: number }>(`/complaints/map?${params}`)
             .then((res) => {
-                if (!cancelled) setPins(res.items)
+                if (cancelled) return
+                setPins(res.items)
+                setTotal(res.total ?? res.items.length)
             })
             .catch(() => undefined)
             .finally(() => {
@@ -184,6 +190,28 @@ export function ComplaintMap({
                     ))}
                     {loading && <span className="text-[color:var(--muted-foreground)]">updating…</span>}
                 </div>
+
+                {total > pins.length && (
+                    /*
+                     * Say so when the map is not showing everything.
+                     *
+                     * The endpoint caps how many pins it returns, and it used to
+                     * report the cap as the total — so with 1,390 open
+                     * complaints the map drew 1,000 and looked complete. On a
+                     * screen built for oversight, quietly omitting a sixth of
+                     * the city is worse than drawing nothing, because there is
+                     * nothing to notice. Filtering by department narrows it
+                     * enough to see everything again, which is why that is the
+                     * advice rather than "scroll".
+                     */
+                    <p className="mt-3 border-t border-[color:var(--border)] pt-3 text-xs text-[color:var(--muted-foreground)]">
+                        Showing the {pins.length.toLocaleString()} most recent of{' '}
+                        <span className="tnum font-semibold text-[color:var(--foreground)]">
+                            {total.toLocaleString()}
+                        </span>{' '}
+                        matching complaints. Filter by department to see all of them.
+                    </p>
+                )}
             </Card>
 
             {!icons ? (
@@ -239,18 +267,18 @@ export function ComplaintMap({
                                 >
                                     <Popup>
                                         <div className="min-w-[200px]">
-                                            <p className="font-mono text-[10px] text-slate-400">
+                                            <p className="font-mono text-[10px] text-[color:var(--subtle-foreground)]">
                                                 {pin.referenceNo}
                                             </p>
                                             <p className="mt-0.5 text-sm font-semibold leading-snug">
                                                 {pin.title}
                                             </p>
-                                            <p className="mt-1 text-xs text-slate-600">
+                                            <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
                                                 {STATUS_META[pin.status].label}
                                                 {pin.sector && ` · Sector ${pin.sector.number}`}
                                             </p>
                                             {pin.department && (
-                                                <p className="text-xs text-slate-500">
+                                                <p className="text-xs text-[color:var(--muted-foreground)]">
                                                     {pin.department.icon} {pin.department.name}
                                                 </p>
                                             )}
@@ -259,15 +287,15 @@ export function ComplaintMap({
                                                     className={cn(
                                                         'mt-1 text-xs font-medium',
                                                         deadline.tone === 'overdue'
-                                                            ? 'text-red-600'
-                                                            : 'text-slate-600',
+                                                            ? 'text-[color:var(--error)]'
+                                                            : 'text-[color:var(--muted-foreground)]',
                                                     )}
                                                 >
                                                     {deadline.text}
                                                 </p>
                                             )}
                                             {pin.escalationLevel > 0 && (
-                                                <p className="mt-1 text-xs font-medium text-purple-700">
+                                                <p className="mt-1 text-xs font-medium text-[color:var(--escalate-fg)]">
                                                     Escalated ×{pin.escalationLevel}
                                                 </p>
                                             )}

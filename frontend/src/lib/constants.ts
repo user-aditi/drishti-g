@@ -34,14 +34,14 @@ export const RANK_LABEL: Record<Rank, string> = {
 }
 
 export const RANK_STYLE: Record<Rank, string> = {
-    CITIZEN: 'bg-slate-100 text-slate-700',
-    FIELD_WORKER: 'bg-teal-100 text-teal-800',
+    CITIZEN: 'bg-[color:var(--neutral-bg)] text-[color:var(--neutral-fg)]',
+    FIELD_WORKER: 'bg-[color:var(--info-bg)] text-[color:var(--info-fg)]',
     SECTION_OFFICER: 'bg-[color:var(--accent)] text-[color:var(--accent-foreground)]',
-    CIRCLE_OFFICER: 'bg-indigo-100 text-indigo-800',
-    ZONAL_OFFICER: 'bg-violet-100 text-violet-800',
-    HOD: 'bg-purple-100 text-purple-800',
-    CEO: 'bg-amber-100 text-amber-900',
-    SUPER_ADMIN: 'bg-slate-800 text-white',
+    CIRCLE_OFFICER: 'bg-[color:var(--accent)] text-[color:var(--accent-foreground)]',
+    ZONAL_OFFICER: 'bg-[color:var(--escalate-bg)] text-[color:var(--escalate-fg)]',
+    HOD: 'bg-[color:var(--escalate-bg)] text-[color:var(--escalate-fg)]',
+    CEO: 'bg-[color:var(--warning-bg)] text-[color:var(--warning-fg)]',
+    SUPER_ADMIN: 'bg-[color:var(--primary)] text-[color:var(--primary-foreground)]',
 }
 
 export const isOfficer = (rank: Rank): boolean => RANK_LEVEL[rank] >= RANK_LEVEL.SECTION_OFFICER
@@ -73,57 +73,57 @@ export interface StatusMeta {
 export const STATUS_META: Record<ComplaintStatus, StatusMeta> = {
     SUBMITTED: {
         label: 'Submitted',
-        className: 'bg-slate-100 text-slate-700',
-        dot: 'bg-slate-400',
-        hex: '#94A3B8',
+        className: 'bg-[color:var(--neutral-bg)] text-[color:var(--neutral-fg)]',
+        dot: 'bg-[color:var(--status-submitted)]',
+        hex: '#98A2B3',
     },
     ROUTED: {
         label: 'Awaiting officer',
-        className: 'bg-sky-100 text-sky-800',
-        dot: 'bg-sky-500',
+        className: 'bg-[color:var(--info-bg)] text-[color:var(--info-fg)]',
+        dot: 'bg-[color:var(--status-routed)]',
         hex: '#0EA5E9',
     },
     ASSIGNED: {
         label: 'With officer',
         className: 'bg-[color:var(--accent)] text-[color:var(--accent-foreground)]',
-        dot: 'bg-[color:var(--primary)]',
-        hex: '#2F7F83',
+        dot: 'bg-[color:var(--status-assigned)]',
+        hex: '#4F46E5',
     },
     IN_PROGRESS: {
         label: 'Work in progress',
-        className: 'bg-amber-100 text-amber-800',
-        dot: 'bg-amber-500',
+        className: 'bg-[color:var(--warning-bg)] text-[color:var(--warning-fg)]',
+        dot: 'bg-[color:var(--status-in-progress)]',
         hex: '#F59E0B',
     },
     AWAITING_VERIFICATION: {
         label: 'Awaiting inspection',
-        className: 'bg-violet-100 text-violet-800',
-        dot: 'bg-violet-500',
+        className: 'bg-[color:var(--escalate-bg)] text-[color:var(--escalate-fg)]',
+        dot: 'bg-[color:var(--status-awaiting)]',
         hex: '#8B5CF6',
     },
     RESOLVED: {
         label: 'Resolved',
-        className: 'bg-emerald-100 text-emerald-800',
-        dot: 'bg-emerald-500',
+        className: 'bg-[color:var(--success-bg)] text-[color:var(--success-fg)]',
+        dot: 'bg-[color:var(--status-resolved)]',
         hex: '#10B981',
     },
     CLOSED: {
         label: 'Closed',
-        className: 'bg-slate-200 text-slate-700',
-        dot: 'bg-slate-500',
-        hex: '#64748B',
+        className: 'bg-[color:var(--neutral-bg)] text-[color:var(--neutral-fg)]',
+        dot: 'bg-[color:var(--status-closed)]',
+        hex: '#667085',
     },
     REJECTED: {
         label: 'Rejected',
-        className: 'bg-red-100 text-red-800',
-        dot: 'bg-red-500',
+        className: 'bg-[color:var(--error-bg)] text-[color:var(--error-fg)]',
+        dot: 'bg-[color:var(--status-rejected)]',
         hex: '#EF4444',
     },
     DUPLICATE: {
         label: 'Duplicate',
-        className: 'bg-slate-100 text-slate-600',
-        dot: 'bg-slate-400',
-        hex: '#94A3B8',
+        className: 'bg-[color:var(--neutral-bg)] text-[color:var(--neutral-fg)]',
+        dot: 'bg-[color:var(--status-submitted)]',
+        hex: '#98A2B3',
     },
 }
 
@@ -150,10 +150,10 @@ export const STATUS_FUNNEL: ComplaintStatus[] = [
 ]
 
 export const PRIORITY_META: Record<Priority, { label: string; className: string }> = {
-    LOW: { label: 'Low', className: 'bg-slate-100 text-slate-600' },
-    MEDIUM: { label: 'Medium', className: 'bg-sky-100 text-sky-800' },
-    HIGH: { label: 'High', className: 'bg-orange-100 text-orange-800' },
-    CRITICAL: { label: 'Critical', className: 'bg-red-100 text-red-800' },
+    LOW: { label: 'Low', className: 'bg-[color:var(--neutral-bg)] text-[color:var(--neutral-fg)]' },
+    MEDIUM: { label: 'Medium', className: 'bg-[color:var(--info-bg)] text-[color:var(--info-fg)]' },
+    HIGH: { label: 'High', className: 'bg-[color:var(--warning-bg)] text-[color:var(--warning-fg)]' },
+    CRITICAL: { label: 'Critical', className: 'bg-[color:var(--error-bg)] text-[color:var(--error-fg)]' },
 }
 
 // --- GRIE --------------------------------------------------------------------
@@ -164,28 +164,28 @@ export const BAND_META: Record<
 > = {
     LOW: {
         label: 'Low',
-        className: 'bg-emerald-100 text-emerald-800',
+        className: 'bg-[color:var(--success-bg)] text-[color:var(--success-fg)]',
         bar: 'bg-[color:var(--risk-low)]',
         text: 'text-[color:var(--risk-low)]',
         hex: '#059669',
     },
     MODERATE: {
         label: 'Moderate',
-        className: 'bg-yellow-100 text-yellow-800',
+        className: 'bg-[color:var(--risk-moderate-bg)] text-[color:var(--risk-moderate-fg)]',
         bar: 'bg-[color:var(--risk-moderate)]',
         text: 'text-[color:var(--risk-moderate)]',
         hex: '#CA8A04',
     },
     HIGH: {
         label: 'High',
-        className: 'bg-orange-100 text-orange-800',
+        className: 'bg-[color:var(--risk-high-bg)] text-[color:var(--risk-high-fg)]',
         bar: 'bg-[color:var(--risk-high)]',
         text: 'text-[color:var(--risk-high)]',
         hex: '#EA580C',
     },
     SEVERE: {
         label: 'Severe',
-        className: 'bg-red-100 text-red-800',
+        className: 'bg-[color:var(--error-bg)] text-[color:var(--error-fg)]',
         bar: 'bg-[color:var(--risk-severe)]',
         text: 'text-[color:var(--risk-severe)]',
         hex: '#DC2626',
@@ -209,31 +209,43 @@ export const NOIDA_CENTRE: [number, number] = [28.5706, 77.351]
 export const DEMO_PASSWORD = 'drishti123'
 
 /** Seeded accounts, so a reviewer can get in without reading the README. */
+/**
+ * The demo accounts, one per layer of the tree.
+ *
+ * Deliberately ordered from the ground up, because that is the order a
+ * complaint travels: a resident files it, the sector officer works it, and it
+ * climbs only when a deadline is missed. Each hint names the layer the account
+ * actually sits at, so the demo shows the hierarchy rather than describing it.
+ *
+ * There is no field-worker account, and there must never be one again: street
+ * labour reaches the system through a per-job code at /w/<code>, with no login
+ * at all. The old Beldar entry here pointed at a switched-off account and
+ * simply failed to sign in.
+ */
 export const DEMO_ACCOUNTS = [
     {
-        email: 'admin@drishti.gov.in',
-        label: 'Super Admin',
-        hint: 'Every department and zone, the whole org chart',
+        email: 'citizen@example.com',
+        label: 'Citizen',
+        hint: 'Report an issue and follow it',
+    },
+    {
+        email: 'je.s5.civil@noidaauthority.in',
+        label: 'Sector Officer — Sector 5',
+        hint: 'The ground floor: triages complaints and sends crew out with a code',
+    },
+    {
+        email: 'ee.wc5.civil@noidaauthority.in',
+        label: 'Zone Officer — Zone III',
+        hint: 'One layer up: overdue work from six sectors climbs to here',
     },
     {
         email: 'gm.civil@noidaauthority.in',
         label: 'General Manager (Civil)',
-        hint: 'Department-wide oversight and the risk queue',
+        hint: 'The whole city for one department, and the risk queue',
     },
     {
-        email: 'ee.wc5.civil@noidaauthority.in',
-        label: 'Executive Engineer',
-        hint: 'Work Circle 5 — escalations land here',
+        email: 'admin@drishti.gov.in',
+        label: 'Super Admin',
+        hint: 'Shapes the authority itself — layers, units and postings',
     },
-    {
-        email: 'je.s5.civil@noidaauthority.in',
-        label: 'Junior Engineer',
-        hint: 'Sector 5 desk — allot work to your crew',
-    },
-    {
-        email: 'worker1.s5.civil@noidaauthority.in',
-        label: 'Beldar',
-        hint: 'Field worker — the phone view',
-    },
-    { email: 'citizen@example.com', label: 'Citizen', hint: 'Report an issue and track it' },
 ]

@@ -180,18 +180,18 @@ const DEPARTMENTS = [
 ]
 
 const CATEGORIES = [
-  { code: 'GARBAGE', name: 'Garbage Not Collected', nameHi: 'कूड़ा नहीं उठाया गया', dept: 'PHD', sla: 24, icon: '🗑️', trade: Trade.SAFAI_KARAMCHARI, keywords: 'garbage,kachra,kooda,waste,trash,dustbin,rubbish,dump,safai,bin' },
-  { code: 'SWEEPING', name: 'Street Not Swept', nameHi: 'सड़क की सफाई नहीं', dept: 'PHD', sla: 24, icon: '🧹', trade: Trade.SAFAI_KARAMCHARI, keywords: 'sweeping,sweep,jhadu,safai nahi,dirty road,dust,malba,debris' },
-  { code: 'DEAD_ANIMAL', name: 'Dead Animal Removal', nameHi: 'मृत पशु हटाना', dept: 'PHD', sla: 6, icon: '⚠️', trade: Trade.SAFAI_KARAMCHARI, keywords: 'dead animal,dead dog,mrit,carcass,smell,badbu,stray dead' },
-  { code: 'TOILET', name: 'Public Toilet Issue', nameHi: 'सार्वजनिक शौचालय', dept: 'PHD', sla: 48, icon: '🚻', trade: Trade.SAFAI_KARAMCHARI, keywords: 'toilet,shauchalay,public toilet,washroom,urinal' },
+  { code: 'GARBAGE', name: 'Garbage Not Collected', nameHi: 'कूड़ा नहीं उठाया गया', dept: 'PHD', sla: 24, severity: 2, icon: '🗑️', trade: Trade.SAFAI_KARAMCHARI, keywords: 'garbage,kachra,kooda,waste,trash,dustbin,rubbish,dump,safai,bin' },
+  { code: 'SWEEPING', name: 'Street Not Swept', nameHi: 'सड़क की सफाई नहीं', dept: 'PHD', sla: 24, severity: 1, icon: '🧹', trade: Trade.SAFAI_KARAMCHARI, keywords: 'sweeping,sweep,jhadu,safai nahi,dirty road,dust,malba,debris' },
+  { code: 'DEAD_ANIMAL', name: 'Dead Animal Removal', nameHi: 'मृत पशु हटाना', dept: 'PHD', sla: 6, severity: 3, icon: '⚠️', trade: Trade.SAFAI_KARAMCHARI, keywords: 'dead animal,dead dog,mrit,carcass,smell,badbu,stray dead' },
+  { code: 'TOILET', name: 'Public Toilet Issue', nameHi: 'सार्वजनिक शौचालय', dept: 'PHD', sla: 48, severity: 2, icon: '🚻', trade: Trade.SAFAI_KARAMCHARI, keywords: 'toilet,shauchalay,public toilet,washroom,urinal' },
 
-  { code: 'STREETLIGHT', name: 'Streetlight Not Working', nameHi: 'स्ट्रीट लाइट खराब', dept: 'EMD', sla: 48, icon: '💡', trade: Trade.LINEMAN, keywords: 'streetlight,street light,light,batti,lamp,pole,dark,andhera,bijli,khambha' },
-  { code: 'CABLE_HANG', name: 'Hanging or Broken Cable', nameHi: 'लटकता हुआ तार', dept: 'EMD', sla: 12, icon: '⚡', trade: Trade.LINEMAN, keywords: 'cable,wire,tar,hanging wire,live wire,current,spark,shock,electric' },
-  { code: 'PUMP', name: 'Pump House Fault', nameHi: 'पंप हाउस खराबी', dept: 'EMD', sla: 24, icon: '⚙️', trade: Trade.LINEMAN, keywords: 'pump,motor,pump house,booster,machine kharab' },
+  { code: 'STREETLIGHT', name: 'Streetlight Not Working', nameHi: 'स्ट्रीट लाइट खराब', dept: 'EMD', sla: 48, severity: 3, icon: '💡', trade: Trade.LINEMAN, keywords: 'streetlight,street light,light,batti,lamp,pole,dark,andhera,bijli,khambha' },
+  { code: 'CABLE_HANG', name: 'Hanging or Broken Cable', nameHi: 'लटकता हुआ तार', dept: 'EMD', sla: 12, severity: 5, icon: '⚡', trade: Trade.LINEMAN, keywords: 'cable,wire,tar,hanging wire,live wire,current,spark,shock,electric' },
+  { code: 'PUMP', name: 'Pump House Fault', nameHi: 'पंप हाउस खराबी', dept: 'EMD', sla: 24, severity: 3, icon: '⚙️', trade: Trade.LINEMAN, keywords: 'pump,motor,pump house,booster,machine kharab' },
 
-  { code: 'POTHOLE', name: 'Pothole / Damaged Road', nameHi: 'सड़क में गड्ढा', dept: 'CIVIL', sla: 72, icon: '🕳️', trade: Trade.BELDAR, keywords: 'pothole,gaddha,gaddhe,road,sadak,damaged road,broken road,tar,patchwork' },
-  { code: 'DRAIN', name: 'Blocked Drain / Sewage Overflow', nameHi: 'नाली जाम', dept: 'CIVIL', sla: 48, icon: '🌊', trade: Trade.BELDAR, keywords: 'drain,nali,nalla,sewage,overflow,blockage,gutter,choked,jam,water logging,jalbharav' },
-  { code: 'FOOTPATH', name: 'Damaged Footpath', nameHi: 'क्षतिग्रस्त फुटपाथ', dept: 'CIVIL', sla: 96, icon: '🚶', trade: Trade.MASON, keywords: 'footpath,pavement,tile,paver,kerb,broken tile,walkway' },
+  { code: 'POTHOLE', name: 'Pothole / Damaged Road', nameHi: 'सड़क में गड्ढा', dept: 'CIVIL', sla: 72, severity: 3, icon: '🕳️', trade: Trade.BELDAR, keywords: 'pothole,gaddha,gaddhe,road,sadak,damaged road,broken road,tar,patchwork' },
+  { code: 'DRAIN', name: 'Blocked Drain / Sewage Overflow', nameHi: 'नाली जाम', dept: 'CIVIL', sla: 48, severity: 4, icon: '🌊', trade: Trade.BELDAR, keywords: 'drain,nali,nalla,sewage,overflow,blockage,gutter,choked,jam,water logging,jalbharav' },
+  { code: 'FOOTPATH', name: 'Damaged Footpath', nameHi: 'क्षतिग्रस्त फुटपाथ', dept: 'CIVIL', sla: 96, severity: 2, icon: '🚶', trade: Trade.MASON, keywords: 'footpath,pavement,tile,paver,kerb,broken tile,walkway' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -239,6 +239,23 @@ const TEMPLATES: Record<string, Array<{ title: string; description: string }>> =
     { title: 'Footpath tiles broken and uneven', description: 'Paver tiles along the footpath have come loose and several are missing. An elderly resident tripped here last week.' },
   ],
 }
+
+/**
+ * Categories whose problems belong to a street rather than a household.
+ *
+ * A dark lane, a choked nala or an uncollected bin is felt by everyone who
+ * walks past it, so complaints in these categories are seeded as community
+ * grievances that neighbours can back. A blocked private connection is not.
+ */
+const COMMUNITY_CATEGORIES = new Set([
+  'GARBAGE',
+  'SWEEPING',
+  'STREETLIGHT',
+  'DRAIN',
+  'POTHOLE',
+  'FOOTPATH',
+  'PUMP',
+])
 
 // ---------------------------------------------------------------------------
 // Staff roster
@@ -315,6 +332,16 @@ const CITIZENS = [
   { email: 'citizen6@example.com', name: 'Rohit Bhardwaj', sector: 8 },
   { email: 'citizen7@example.com', name: 'Anjali Mehta', sector: 18 },
 ]
+
+/**
+ * How many further residents to generate per sector.
+ *
+ * The named seven above are the demo logins. These are their neighbours, and
+ * they exist because a community grievance means nothing in a sector with one
+ * registered resident — nobody can back anything, and the whole mechanism
+ * reads as broken rather than unused.
+ */
+const RESIDENTS_PER_SECTOR = 9
 
 const CONTRACTORS = [
   { code: 'CTR-001', name: 'Yamuna Infra Projects Pvt Ltd', isBlacklisted: false },
@@ -410,6 +437,7 @@ async function main() {
       nameHi: c.nameHi,
       departmentId: departments.get(c.dept)!,
       defaultSlaHours: c.sla,
+      severity: c.severity,
       keywords: c.keywords,
       icon: c.icon,
       trade: c.trade,
@@ -591,8 +619,30 @@ async function main() {
     citizenIds.push({ id: user.id, sectorId })
   }
 
+  // Their neighbours. Deterministic emails so re-running the seed upserts the
+  // same people rather than growing the roll every time.
+  for (const sectorSpec of SECTORS) {
+    const sectorId = sectors.get(sectorSpec.number)!
+    for (let i = 1; i <= RESIDENTS_PER_SECTOR; i++) {
+      const fullName = `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`
+      const email = `resident${i}.s${sectorSpec.number}@example.com`
+      const user = await prisma.user.upsert({
+        where: { email },
+        update: {},
+        create: {
+          email,
+          hashedPassword,
+          fullName,
+          rank: Rank.CITIZEN,
+          homeSectorId: sectorId,
+        },
+      })
+      citizenIds.push({ id: user.id, sectorId })
+    }
+  }
+
   console.log(
-    `  1 super admin, 1 CEO, ${SENIOR_STAFF.length} senior officers, ${officerCount} section officers, ${workerCount} field workers, ${CITIZENS.length} citizens`,
+    `  1 super admin, 1 CEO, ${SENIOR_STAFF.length} senior officers, ${officerCount} section officers, ${workerCount} field workers, ${citizenIds.length} citizens`,
   )
 
   // --- Contractors and projects ----------------------------------------------
@@ -732,6 +782,9 @@ async function main() {
             assignedOfficerId: officerPosting?.userId ?? null,
             assignedWorkerId: usesWorker ? (workerPosting?.userId ?? null) : null,
             status,
+            // Two thirds of street-level problems are raised as community
+            // grievances; the rest as private complaints, so both paths appear.
+            isCommunity: COMMUNITY_CATEGORIES.has(categorySpec.code) && random() < 0.66,
             priority: wasEscalated ? Priority.HIGH : profile.count > 20 ? Priority.HIGH : Priority.MEDIUM,
             escalationLevel: wasEscalated ? 1 : 0,
             // Jitter around the centroid so map pins are not stacked.

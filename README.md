@@ -20,11 +20,20 @@ cp .env.example .env
 ```
 
 ```bash
-docker compose up -d postgres neo4j
+docker compose up -d postgres
 ```
 
 ```bash
 cd backend && npm install && npm run prisma:migrate && npm run seed
+```
+
+The seed writes the demo authority against the legacy zone/circle/sector tables.
+Three scripts then move it onto the org tree the application actually reads, and
+they must run in this order — the roles script refuses to retire field-worker
+postings until crew records exist to replace them:
+
+```bash
+cd backend && npm run org:build && npm run migrate:crew && npm run org:roles
 ```
 
 ```bash
@@ -40,7 +49,6 @@ cd frontend && npm install && npm run dev
 | Web app | http://localhost:3000 |
 | API | http://localhost:4000/api/v1 |
 | Health check | http://localhost:4000/api/v1/health |
-| Neo4j Browser | http://localhost:7474 |
 
 ### Demo accounts
 
@@ -55,6 +63,35 @@ All use the password `drishti123`. The login screen has one-click buttons.
 | `je.s5.civil@noidaauthority.in` | Junior Engineer | Sector 5 desk — allot work to your crew |
 | `worker1.s5.civil@noidaauthority.in` | Beldar | The field worker's phone view |
 | `citizen@example.com` | Citizen | Report an issue and track it |
+
+### Filling it with traffic
+
+The seed is 938 hand-written rows — enough to click through, not enough to judge
+a screen by or to train anything on. The simulator drives the **real HTTP API**
+with months of plausible municipal work, so GCCE genuinely routes it, the
+scheduler genuinely escalates it and GRIE genuinely scores it:
+
+```bash
+cd backend && npm run dev:sim
+```
+
+```bash
+cd backend && npm run sim:run -- --reset --days 180 --per-day 30
+```
+
+`dev:sim` is the ordinary dev server with the per-IP rate limit on the public
+crew surface turned off — every simulated crew member shares one address, so the
+limiter would otherwise refuse most field submissions. Both that flag and the
+timestamp rewriting are env-gated and refused when `NODE_ENV=production`.
+
+Flags: `--days`, `--per-day`, `--breach-rate` (0.15), `--override-rate` (0.10),
+`--citizens`, `--seed`, `--reset`. A run reproduces exactly with
+`--reset --seed N`; without `--reset` the second run piles onto the first.
+
+**This data is simulated.** It may train models and fill screens. It is not
+evidence for anything — see `docs/pending-work.md` §7 for what is real in it
+(every row's existence and content) and what is not (every timestamp, and the
+whole population).
 
 ---
 
@@ -106,6 +143,29 @@ Everything hangs off a **Posting** — one row joining *person × department × 
 
 6. **Super Admin** — `admin@drishti.gov.in` → **Risk queue**, then *"Why was this flagged?"* on Sector 5. Every factor with its measurement, weight, contribution, and a total that reconciles. Then **Org chart** and **Map**.
 
+7. **Decisions** → every judgement the engines made, with the corrections attached. This is the screen the autonomy gate is argued from, and the source of the labels the models train on.
+
+8. **Autonomy gate** → what the system would do without a person, and why it will not. Each threshold shows the error tolerance it was held to and the error it actually achieved. Two of the three classes read *no threshold works*, which is the measured conclusion rather than a setting.
+
+---
+
+## Proving it still works
+
+Three scripts, each meant to be re-run rather than run once.
+
+```bash
+cd backend && npm run accept          # drive the whole lifecycle end to end, 11 steps
+cd frontend && npm run audit:pages    # open all 39 routes as all four roles, timed
+cd backend && npm test                # 168 tests across 12 suites
+```
+
+`npm run accept` is the honest version of the acceptance checklist: a citizen
+registers and files with a photograph, GCCE routes it and explains why, an
+officer issues a crew code, someone with no account at all opens that code and
+uploads proof, the automated checks score it, the citizen confirms, a second
+complaint blows its deadline and climbs the chain on its own, GRIE rescores, and
+the audit chain still verifies. It fails loudly and reports which step.
+
 ---
 
 ## Architecture
@@ -138,22 +198,21 @@ backend/             Node 22 + TypeScript + Express + Prisma
     seed.ts          the whole authority, with generated complaint history
   src/
     config/          env validation (fails fast on bad config)
-    lib/             prisma, neo4j, auth primitives, logger
+    lib/             prisma, auth primitives, logger
     middleware/      authenticate, requireRank, zod validation, uploads, errors
     routes/          auth, complaints, officer, worker, risk, org, admin, notifications
     services/        hierarchy.ts, gcce.ts, escalation.ts, grie.ts, riskSignals.ts,
-                     audit.ts, graphSync.ts
+                     audit.ts, priority.ts, verification.ts
 ```
 
-### Two databases, two jobs
+### One database, one job
 
-**Postgres is the system of record.** **Neo4j is a projection** — it exists so "who covers this sector?" is a one-hop traversal rather than a join. Every graph write is a `MERGE`, so it rebuilds from Postgres at any time:
-
-```bash
-curl -X POST http://localhost:4000/api/v1/graph/sync -H "Authorization: Bearer <token>"
-```
-
-If the graph is unreachable the API still boots and `/health` reports it as down.
+**Postgres is the system of record**, and the only one. A Neo4j projection ran
+alongside it for a while on the theory that "who covers this sector?" wanted a
+traversal; nothing ever queried it, so it was removed. The org tree is a
+recursive CTE, which is what it should be — see
+[docs/real-world-readiness.md](docs/real-world-readiness.md) for the reasoning
+and for the conditions under which a graph would earn its place back.
 
 ---
 
@@ -227,10 +286,48 @@ The generator uses a fixed PRNG seed, so every teammate's database is identical.
 
 ---
 
+## The four models, and which of them ship
+
+Every model is trained in Python, exported as a JSON spec, and executed in
+TypeScript. No Python in the request path, no second container, and no drift
+between the model that was studied and the model that runs.
+
+```bash
+cd backend && npm run sim:run -- --reset --days 75 --per-day 28   # generate traffic
+cd backend && npm run export:training       # complaint text with every label
+cd backend && npm run export:eventlog       # the lifecycle as a process log
+cd backend && npm run export:resolutions    # how long work actually took
+```
+
+```bash
+cd research
+python -m drishti_research.classifier   # W3.1 — complaint text
+python -m drishti_research.predictor    # W3.2 — what happens next
+python -m drishti_research.sla          # W3.3 — how long it will take
+python -m drishti_research.conformal    # W4.1 — the gate's thresholds
+```
+
+| | Result | Shipped |
+|---|---|---|
+| Classifier | 10.8% against the keyword matcher's 82.4% | **No** — `CLASSIFIER_ENABLED = false` |
+| Predictor | 0.815, against gradient boosting's 0.815 | Yes |
+| SLA estimator | breach rate 60.2% → 10.4% | Yes |
+| Autonomy gate | no threshold makes any action safe | Advisory only |
+
+The classifier is switched off because it is worse than what it replaces, and
+the corpus is the reason: 1,094 complaints share **23 distinct texts**. The gate
+automates nothing because the calibration found no confidence level at which any
+status transition can be taken unattended — every one of them is a claim
+somebody should be willing to stand behind.
+
+Both are recorded rather than hidden. Full working in `docs/pending-work.md`.
+
+---
+
 ## What is next
 
 1. **Email notifications** — already persisted first, so a sender only drains unsent rows
-2. **Hindi/Hinglish auto-categorisation** (MuRIL / IndicBERT) — GCCE's keyword matcher is the fallback it will sit in front of
-3. **Scheduled escalation** — the sweep exists and is exposed as an endpoint; it needs a cron
+2. **A complaint corpus with real variety** — the blocker on W3.1, and on anything that reads complaint text. Twenty-three phrasings cannot train or evaluate a classifier, and generating more of them would only teach the generator
+3. **An officer-facing re-route endpoint** — an officer who finds a drainage complaint that belongs to Electrical currently cannot say so; only the Super Admin console can reassign. It blocks W2.3's third feedback signal, and it needs a governance decision first: may a Junior Engineer hand work to a peer department, or only escalate upward?
 4. **Duplicate detection** and the public transparency page
 5. **For the paper** — replace the unverified calibration parameters with cited figures, and add bootstrap intervals on the skill gap (see `research/README.md`)

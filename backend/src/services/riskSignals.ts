@@ -12,7 +12,14 @@ import { prisma } from '../lib/prisma.js'
 import { createLogger } from '../lib/logger.js'
 import * as audit from './audit.js'
 import { DISCOUNTED_STATUSES, OPEN_STATUSES } from './gcce.js'
-import { REVIEW_THRESHOLD, scoreEntity, type ScoreResult, type Signals } from './grie.js'
+import {
+  REVIEW_THRESHOLD,
+  scoreEntity,
+  type ScorableEntityType,
+  type ScoreResult,
+  type Signals,
+} from './grie.js'
+import * as org from './orgTree.js'
 
 const log = createLogger('grie')
 
@@ -53,18 +60,43 @@ async function complaintSignals(where: Prisma.ComplaintWhereInput): Promise<Sign
 
   const openCount = counted.filter((c) => OPEN_STATUSES.includes(c.status)).length
 
-  // A "repeat" is a complaint in a category this area has already seen. The
-  // first of a category is not a repeat, so the count is (occurrences - 1) per
-  // category, plus anything explicitly marked duplicate.
-  const perCategory = new Map<number, number>()
+  // A "repeat" is an issue this area already *fixed* and is now seeing again.
+  //
+  // The obvious definition — any complaint in a category the area has seen
+  // before — measures volume, not repetition. It reduces to
+  // 1 - (distinct categories / n), and since the category catalogue is fixed and
+  // small, it climbs towards 1.0 for any busy area whether or not anything
+  // actually recurred. `openComplaintLoad` already measures volume; this factor
+  // was silently doing it a second time.
+  //
+  // What matters to an officer is narrower: something was reported, closed out,
+  // and came back. That is the repair not holding, and it is the case worth
+  // escalating. Ten potholes reported in one week are one wave and not repeats;
+  // one pothole reported, fixed and reported again is a repeat.
+  //
+  // So a complaint counts if an earlier complaint in the same category here was
+  // already resolved when it was filed. Complaints explicitly marked duplicate
+  // are excluded rather than added: two people reporting the same pothole on the
+  // same day is corroboration, not recurrence.
+  const resolvedByCategory = new Map<number, number[]>()
   for (const c of counted) {
-    if (c.categoryId == null) continue
-    perCategory.set(c.categoryId, (perCategory.get(c.categoryId) ?? 0) + 1)
+    if (c.categoryId == null || c.resolvedAt == null) continue
+    const at = c.resolvedAt.getTime()
+    const seen = resolvedByCategory.get(c.categoryId)
+    if (seen) seen.push(at)
+    else resolvedByCategory.set(c.categoryId, [at])
   }
-  let repeats = 0
-  for (const count of perCategory.values()) repeats += Math.max(0, count - 1)
-  const explicitDuplicates = complaints.filter((c) => c.duplicateOfId != null).length
-  const repeatComplaintRate = Math.min(1, (repeats + explicitDuplicates) / counted.length)
+
+  const candidates = counted.filter((c) => c.categoryId != null && c.duplicateOfId == null)
+  const repeats = candidates.filter((c) => {
+    const earlier = resolvedByCategory.get(c.categoryId!)
+    if (!earlier) return false
+    const filedAt = c.createdAt.getTime()
+    // Strictly earlier: a complaint cannot be a repeat of itself.
+    return earlier.some((resolvedAt) => resolvedAt < filedAt)
+  }).length
+
+  const repeatComplaintRate = candidates.length > 0 ? repeats / candidates.length : 0
 
   // An SLA breach is either a resolved complaint that finished late, or an open
   // one already past its deadline. Only complaints that *have* a deadline count
@@ -98,138 +130,72 @@ async function complaintSignals(where: Prisma.ComplaintWhereInput): Promise<Sign
   }
 }
 
-export const collectSectorSignals = (sectorId: number): Promise<Signals> =>
-  complaintSignals({ sectorId })
+/**
+ * Signals for a unit of the org tree, at any depth.
+ *
+ * Covers the unit and everything beneath it, so scoring a zone means scoring
+ * the sectors inside it — which is what an officer looking at a zone is asking
+ * about. One collector replaced the three that existed per tier.
+ */
+export const collectUnitSignals = async (unitId: number): Promise<Signals> =>
+  complaintSignals({ orgUnitId: { in: await org.getSubtreeIds(prisma, unitId) } })
 
-export const collectCircleSignals = (circleId: number): Promise<Signals> =>
-  complaintSignals({ sector: { circleId } })
+/**
+ * The open-complaint count that reads as "completely saturated" here.
+ *
+ * A single sector is in serious trouble at 25 open complaints — the same
+ * threshold GCCE uses to start escalating new arrivals. A zone aggregating six
+ * sectors would hit 25 on a quiet day, so the cap scales with how many
+ * ground-floor units sit beneath: the factor stays meaningful at every depth
+ * instead of being inert at the top and hair-trigger at the bottom.
+ */
+export const SECTOR_SATURATION = 25
 
-export const collectZoneSignals = (zoneId: number): Promise<Signals> =>
-  complaintSignals({ sector: { circle: { zoneId } } })
+export async function unitLoadCap(unitId: number): Promise<number> {
+  const leaves = await prisma.orgUnit.count({
+    where: {
+      path: { startsWith: (await prisma.orgUnit.findUnique({ where: { id: unitId } }))?.path ?? '' },
+      isLeaf: true,
+      isActive: true,
+    },
+  })
+  return SECTOR_SATURATION * Math.max(1, leaves)
+}
 
 export const collectDepartmentSignals = (departmentId: number): Promise<Signals> =>
   complaintSignals({ departmentId })
 
-export async function collectProjectSignals(projectId: number): Promise<Signals> {
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: { inspections: true },
-  })
-  if (!project) return {}
-
-  const allocated = project.budgetAllocated ? Number(project.budgetAllocated) : 0
-  const spent = project.budgetSpent ? Number(project.budgetSpent) : 0
-  const budgetOverrun = allocated > 0 ? Math.max(0, (spent - allocated) / allocated) : 0
-
-  // A finished project's delay is fixed; an unfinished one keeps accruing.
-  const end = project.actualEnd ?? new Date()
-  const scheduleDelayDays = project.plannedEnd
-    ? Math.max(0, (end.getTime() - project.plannedEnd.getTime()) / DAY_MS)
-    : 0
-
-  const conducted = project.inspections.filter((i) => i.passed != null)
-  const inspectionFailureRate =
-    conducted.length > 0 ? conducted.filter((i) => i.passed === false).length / conducted.length : 0
-
-  const linkedComplaints = project.sectorId
-    ? await prisma.complaint.count({
-        where: { sectorId: project.sectorId, status: { notIn: DISCOUNTED_STATUSES } },
-      })
-    : 0
-
-  return { budgetOverrun, scheduleDelayDays, inspectionFailureRate, linkedComplaints }
-}
-
-export async function collectContractorSignals(contractorId: number): Promise<Signals> {
-  const contractor = await prisma.contractor.findUnique({
-    where: { id: contractorId },
-    include: { projects: { select: { id: true, actualEnd: true, plannedEnd: true } } },
-  })
-  if (!contractor) return {}
-
-  const projects = contractor.projects
-
-  // Averaging the contractor's own projects is why project scoring runs before
-  // contractor scoring in `recomputeAll`.
-  let avgProjectRisk = 0
-  if (projects.length > 0) {
-    const scores = await Promise.all(
-      projects.map(async (p) =>
-        scoreEntity(RiskEntityType.PROJECT, p.id, await collectProjectSignals(p.id)).score,
-      ),
-    )
-    avgProjectRisk = scores.reduce((a, b) => a + b, 0) / scores.length
-  }
-
-  const finished = projects.filter((p) => p.actualEnd != null && p.plannedEnd != null)
-  const lateDeliveryRate =
-    finished.length > 0
-      ? finished.filter((p) => p.actualEnd!.getTime() > p.plannedEnd!.getTime()).length /
-        finished.length
-      : 0
-
-  const inspections = await prisma.inspection.findMany({
-    where: { project: { contractorId }, passed: { not: null } },
-    select: { passed: true },
-  })
-  const inspectionFailureRate =
-    inspections.length > 0
-      ? inspections.filter((i) => i.passed === false).length / inspections.length
-      : 0
-
-  return {
-    avgProjectRisk,
-    lateDeliveryRate,
-    inspectionFailureRate,
-    isBlacklisted: contractor.isBlacklisted ? 1 : 0,
-  }
-}
-
 export async function collectSignals(
-  entityType: RiskEntityType,
+  entityType: ScorableEntityType,
   entityId: number,
 ): Promise<Signals> {
   switch (entityType) {
+    case RiskEntityType.ORG_UNIT:
+      return collectUnitSignals(entityId)
+    // Historical rows only; the three tiers are one tree now.
     case RiskEntityType.SECTOR:
-      return collectSectorSignals(entityId)
     case RiskEntityType.CIRCLE:
-      return collectCircleSignals(entityId)
     case RiskEntityType.ZONE:
-      return collectZoneSignals(entityId)
+      return collectUnitSignals(entityId)
     case RiskEntityType.DEPARTMENT:
       return collectDepartmentSignals(entityId)
-    case RiskEntityType.PROJECT:
-      return collectProjectSignals(entityId)
-    case RiskEntityType.CONTRACTOR:
-      return collectContractorSignals(entityId)
   }
 }
 
-async function labelFor(entityType: RiskEntityType, entityId: number): Promise<string> {
+async function labelFor(entityType: ScorableEntityType, entityId: number): Promise<string> {
   switch (entityType) {
-    case RiskEntityType.SECTOR: {
-      const s = await prisma.sector.findUnique({ where: { id: entityId } })
-      return s ? `Sector ${s.number} — ${s.name}` : `Sector #${entityId}`
-    }
-    case RiskEntityType.CIRCLE: {
-      const c = await prisma.circle.findUnique({ where: { id: entityId } })
-      return c ? c.name : `Circle #${entityId}`
-    }
+    case RiskEntityType.ORG_UNIT:
+    case RiskEntityType.SECTOR:
+    case RiskEntityType.CIRCLE:
     case RiskEntityType.ZONE: {
-      const z = await prisma.zone.findUnique({ where: { id: entityId } })
-      return z ? z.name : `Zone #${entityId}`
+      const unit = await prisma.orgUnit.findUnique({ where: { id: entityId } })
+      // Named by its own layer, so the queue reads "Zone III" or "Sector 5"
+      // without the reader needing to know how deep the authority runs.
+      return unit ? `${unit.kindLabel} ${unit.name}` : `Unit #${entityId}`
     }
     case RiskEntityType.DEPARTMENT: {
       const d = await prisma.department.findUnique({ where: { id: entityId } })
       return d ? d.name : `Department #${entityId}`
-    }
-    case RiskEntityType.PROJECT: {
-      const p = await prisma.project.findUnique({ where: { id: entityId } })
-      return p ? p.name : `Project #${entityId}`
-    }
-    case RiskEntityType.CONTRACTOR: {
-      const c = await prisma.contractor.findUnique({ where: { id: entityId } })
-      return c ? c.name : `Contractor #${entityId}`
     }
   }
 }
@@ -243,11 +209,15 @@ async function labelFor(entityType: RiskEntityType, entityId: number): Promise<s
  * stacking a new one on the supervisor's queue every time anything changes.
  */
 export async function recomputeEntity(
-  entityType: RiskEntityType,
+  entityType: ScorableEntityType,
   entityId: number,
 ): Promise<ScoreResult> {
   const signals = await collectSignals(entityType, entityId)
-  const result = scoreEntity(entityType, entityId, signals)
+  // An area's saturation point depends on how much ground it covers, so a unit
+  // supplies its own rather than being judged by a single sector's threshold.
+  const loadCap =
+    entityType === RiskEntityType.ORG_UNIT ? await unitLoadCap(entityId) : undefined
+  const result = scoreEntity(entityType, entityId, signals, undefined, loadCap)
 
   const stored = await prisma.riskScore.create({
     data: {
@@ -329,60 +299,54 @@ export function latestScore(entityType: RiskEntityType, entityId: number) {
 /**
  * Rescore everything.
  *
- * Order matters twice: geography runs bottom-up because a circle aggregates its
- * sectors, and projects run before contractors because a contractor's dominant
- * factor is the average risk of its own projects.
+ * Units run deepest-first, because a parent aggregates its children.
  */
 export async function recomputeAll(): Promise<Record<string, number>> {
-  const [sectors, circles, zones, departments, projects, contractors] = await Promise.all([
-    prisma.sector.findMany({ select: { id: true } }),
-    prisma.circle.findMany({ select: { id: true } }),
-    prisma.zone.findMany({ select: { id: true } }),
+  const [units, departments] = await Promise.all([
+    prisma.orgUnit.findMany({
+      where: { isActive: true },
+      select: { id: true, depth: true },
+      orderBy: { depth: 'desc' },
+    }),
     prisma.department.findMany({ where: { status: 'ACTIVE' }, select: { id: true } }),
-    prisma.project.findMany({ select: { id: true } }),
-    prisma.contractor.findMany({ select: { id: true } }),
   ])
 
-  for (const s of sectors) await recomputeEntity(RiskEntityType.SECTOR, s.id)
-  for (const c of circles) await recomputeEntity(RiskEntityType.CIRCLE, c.id)
-  for (const z of zones) await recomputeEntity(RiskEntityType.ZONE, z.id)
+  for (const u of units) await recomputeEntity(RiskEntityType.ORG_UNIT, u.id)
   for (const d of departments) await recomputeEntity(RiskEntityType.DEPARTMENT, d.id)
-  for (const p of projects) await recomputeEntity(RiskEntityType.PROJECT, p.id)
-  for (const c of contractors) await recomputeEntity(RiskEntityType.CONTRACTOR, c.id)
 
   const counts = {
-    sectors: sectors.length,
-    circles: circles.length,
-    zones: zones.length,
+    units: units.length,
     departments: departments.length,
-    projects: projects.length,
-    contractors: contractors.length,
   }
   log.info('recomputed', counts)
   return counts
 }
 
 /**
- * Rescore a sector and everything above it, without blocking the request that
+ * Rescore a unit and every layer above it, without blocking the request that
  * triggered it.
+ *
+ * The whole chain is rescored because a complaint in one sector changes the
+ * picture for the zone and the city too — that is what a rollup means. Walking
+ * the tree replaces the fixed sector/circle/zone sequence, so it keeps working
+ * at whatever depth the authority is configured to.
  *
  * A citizen filing a complaint should not wait on risk analysis, and a scoring
  * failure must never fail their submission.
  */
-export function scheduleSectorRescore(sectorId: number): void {
+export function scheduleUnitRescore(unitId: number): void {
   setImmediate(() => {
     void (async () => {
       try {
-        await recomputeEntity(RiskEntityType.SECTOR, sectorId)
-        const sector = await prisma.sector.findUnique({
-          where: { id: sectorId },
-          include: { circle: true },
-        })
-        if (!sector) return
-        await recomputeEntity(RiskEntityType.CIRCLE, sector.circleId)
-        await recomputeEntity(RiskEntityType.ZONE, sector.circle.zoneId)
+        const unit = await prisma.orgUnit.findUnique({ where: { id: unitId } })
+        if (!unit) return
+
+        const chain = [unit.id, ...(await org.getAncestors(prisma, unit)).map((a) => a.id)]
+        for (const id of chain) {
+          await recomputeEntity(RiskEntityType.ORG_UNIT, id)
+        }
       } catch (err) {
-        log.error(`background rescore of sector ${sectorId} failed`, err)
+        log.error(`background rescore of unit ${unitId} failed`, err)
       }
     })()
   })

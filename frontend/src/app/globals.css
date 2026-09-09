@@ -4,84 +4,214 @@
 
 @custom-variant dark (&:is(.dark *));
 
-:root {
-    /* Primary — slate-teal. Reads as civic and administrative without looking
-       like a consumer app, and stays legible against the risk colours. */
-    --primary: #22666B;
-    --primary-light: #2F7F83;
+/**
+ * DRISHTI-G design tokens.
+ *
+ * One palette, defined once, consumed everywhere through var(--…). Nothing in
+ * the app should reach for a raw Tailwind colour (bg-red-50, text-slate-700):
+ * those cannot follow the theme into dark mode, and across forty screens they
+ * drift apart into six different reds. Every colour a component needs has a
+ * token here, including the banner and badge families further down.
+ *
+ * `.force-light` pins a subtree to the light palette regardless of the theme on
+ * <html>. It exists for the street worker's page: that screen is read one-handed
+ * in Noida sun, where a dark UI is genuinely harder to see, and its own phone's
+ * night setting should not decide that for them. It works because these tokens
+ * are re-declared on a descendant, and the nearest ancestor's value wins.
+ */
+:root,
+.force-light {
+    /* ---- Brand ---------------------------------------------------------- *
+     * Indigo, not teal. It reads as public infrastructure rather than as a
+     * health app, and it holds its own next to the risk reds and ambers that
+     * sit beside it on almost every screen in this product. */
+    --primary: #4338CA;
+    --primary-light: #4F46E5;
+    --primary-dark: #3730A3;
     --primary-foreground: #FFFFFF;
+    /* A wash of the brand, for selected rows and quiet highlights. */
+    --primary-wash: #EEF0FE;
 
-    --secondary: #1D4ED8;
+    --secondary: #0284C7;
     --secondary-foreground: #FFFFFF;
 
-    /* Semantic */
-    --success: #059669;
-    --warning: #CA8A04;
-    --error: #DC2626;
-
-    /* Surfaces */
-    --background: #F1F5F9;
-    --foreground: #0F172A;
+    /* ---- Surfaces ------------------------------------------------------- *
+     * Three levels only: the canvas behind everything, the panel that sits on
+     * it, and a sunken tone for table headers and inset blocks. Any more and
+     * nothing reads as being on top of anything. */
+    --background: #F5F6FA;
+    --foreground: #101828;
     --card: #FFFFFF;
-    --card-foreground: #0F172A;
+    --card-foreground: #101828;
     --popover: #FFFFFF;
-    --popover-foreground: #0F172A;
-    --muted: #F1F5F9;
-    --muted-foreground: #64748B;
-    --accent: #EEF7F7;
-    --accent-foreground: #1D5256;
-    --border: #E2E8F0;
-    --input: #CBD5E1;
-    --ring: #2F7F83;
+    --popover-foreground: #101828;
+    --sunken: #F8F9FC;
+    --muted: #F2F4F8;
+    --muted-foreground: #667085;
+    --subtle-foreground: #98A2B3;
+    --accent: #EEF0FE;
+    --accent-foreground: #3730A3;
+    --border: #E4E7EC;
+    --border-strong: #D0D5DD;
+    --input: #D0D5DD;
+    --ring: #4F46E5;
 
-    /* GRIE risk bands. These map 1:1 to the RiskBand enum in the backend. */
+    /* ---- Elevation ------------------------------------------------------ *
+     * Softer and wider than a default shadow: this direction wants surfaces to
+     * lift off the canvas rather than to be outlined against it. */
+    --shadow-xs: 0 1px 2px 0 rgb(16 24 40 / 0.04);
+    --shadow-sm: 0 1px 3px 0 rgb(16 24 40 / 0.06), 0 1px 2px -1px rgb(16 24 40 / 0.04);
+    --shadow-md: 0 4px 12px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.04);
+    --shadow-lg: 0 12px 28px -6px rgb(16 24 40 / 0.12), 0 4px 8px -4px rgb(16 24 40 / 0.06);
+
+    /* ---- Semantic families ---------------------------------------------- *
+     * Each state gets four tokens: a solid, a tint to fill a banner, a border
+     * for that banner, and a foreground legible on the tint. Banners, badges,
+     * row tints and callouts all draw from these, which is why an overdue row
+     * and an overdue badge are the same red on every screen. */
+    --success: #059669;
+    --success-bg: #ECFDF5;
+    --success-border: #A7F3D0;
+    --success-fg: #065F46;
+
+    --warning: #D97706;
+    --warning-bg: #FFFBEB;
+    --warning-border: #FDE68A;
+    --warning-fg: #92400E;
+
+    --error: #DC2626;
+    --error-bg: #FEF2F2;
+    --error-border: #FECACA;
+    --error-fg: #991B1B;
+
+    --info: #0284C7;
+    --info-bg: #F0F9FF;
+    --info-border: #BAE6FD;
+    --info-fg: #075985;
+
+    --escalate: #7C3AED;
+    --escalate-bg: #F5F3FF;
+    --escalate-border: #DDD6FE;
+    --escalate-fg: #5B21B6;
+
+    --neutral-bg: #F2F4F8;
+    --neutral-border: #E4E7EC;
+    --neutral-fg: #475467;
+
+    /* ---- GRIE risk bands ------------------------------------------------ *
+     * These map 1:1 to the RiskBand enum in the backend. */
     --risk-low: #059669;
     --risk-moderate: #CA8A04;
     --risk-high: #EA580C;
     --risk-severe: #DC2626;
 
-    /* Complaint status. One colour per state, used by badges and the map. */
-    --status-submitted: #94A3B8;
+    /* Moderate and High must never look alike — the whole point of the radar is
+       that a supervisor can tell the two apart down a column at a glance. */
+    --risk-moderate-bg: #FEFCE8;
+    --risk-moderate-fg: #854D0E;
+    --risk-high-bg: #FFF4ED;
+    --risk-high-fg: #9A3412;
+
+    /* ---- Complaint status ----------------------------------------------- *
+     * One colour per state, used by badges, the funnel and the map pins. */
+    --status-submitted: #98A2B3;
     --status-routed: #0EA5E9;
-    --status-assigned: #2F7F83;
+    --status-assigned: #4F46E5;
     --status-in-progress: #F59E0B;
     --status-awaiting: #8B5CF6;
     --status-resolved: #10B981;
-    --status-closed: #64748B;
+    --status-closed: #667085;
     --status-rejected: #EF4444;
 
-    /* The chain of command, light to dark by seniority. */
+    /* ---- The chain of command, light to dark by seniority ---------------- */
     --rank-worker: #14B8A6;
-    --rank-section: #2F7F83;
+    --rank-section: #4F46E5;
     --rank-circle: #6366F1;
     --rank-zonal: #8B5CF6;
     --rank-hod: #A855F7;
     --rank-ceo: #D97706;
 
-    --sidebar: #1E293B;
-    --sidebar-foreground: #E2E8F0;
-    --sidebar-muted: #94A3B8;
-    --sidebar-accent: rgba(47, 127, 131, 0.18);
-    --sidebar-border: rgba(148, 163, 184, 0.18);
+    /* ---- Navigation ------------------------------------------------------ *
+     * A deep indigo rail rather than a neutral slate one, so the brand lives in
+     * the chrome and the content area can stay almost colourless. */
+    --sidebar: #1E1B4B;
+    --sidebar-raised: #272463;
+    --sidebar-foreground: #C7D2FE;
+    --sidebar-strong: #FFFFFF;
+    --sidebar-muted: #8E8ECB;
+    --sidebar-accent: #4338CA;
+    --sidebar-border: rgb(199 210 254 / 0.14);
 
+    /* Generous by design. This direction buys legibility with whitespace, and
+       a 10px corner is the difference between a form and a piece of software. */
     --radius: 0.625rem;
 }
 
 .dark {
-    --background: #0B1220;
-    --foreground: #E2E8F0;
-    --card: #111C2E;
-    --card-foreground: #E2E8F0;
-    --popover: #111C2E;
-    --popover-foreground: #E2E8F0;
-    --muted: #1B2942;
-    --muted-foreground: #94A3B8;
-    --accent: #16323A;
-    --accent-foreground: #7BBCBE;
-    --border: rgba(148, 163, 184, 0.16);
-    --input: rgba(148, 163, 184, 0.28);
-    --primary: #4A9B9E;
-    --primary-foreground: #04191B;
+    --primary: #818CF8;
+    --primary-light: #A5B4FC;
+    --primary-dark: #6366F1;
+    --primary-foreground: #1E1B4B;
+    --primary-wash: #262A55;
+
+    --background: #0B0F1A;
+    --foreground: #E6E9F0;
+    --card: #131829;
+    --card-foreground: #E6E9F0;
+    --popover: #161C30;
+    --popover-foreground: #E6E9F0;
+    --sunken: #0F1424;
+    --muted: #1A2033;
+    --muted-foreground: #98A2B3;
+    --subtle-foreground: #6B7688;
+    --accent: #262A55;
+    --accent-foreground: #C7D2FE;
+    --border: #232A3D;
+    --border-strong: #313A52;
+    --input: #313A52;
+    --ring: #818CF8;
+
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.45);
+    --shadow-lg: 0 12px 28px -6px rgb(0 0 0 / 0.55);
+
+    --success-bg: #052E22;
+    --success-border: #10603F;
+    --success-fg: #6EE7B7;
+
+    --warning-bg: #2B1D05;
+    --warning-border: #7C4A0B;
+    --warning-fg: #FCD34D;
+
+    --error-bg: #2C0F10;
+    --error-border: #7F1D1D;
+    --error-fg: #FCA5A5;
+
+    --info-bg: #05253A;
+    --info-border: #0C4A6E;
+    --info-fg: #7DD3FC;
+
+    --escalate-bg: #1F1442;
+    --escalate-border: #4C1D95;
+    --escalate-fg: #C4B5FD;
+
+    --risk-moderate-bg: #2A2205;
+    --risk-moderate-fg: #FDE047;
+    --risk-high-bg: #331608;
+    --risk-high-fg: #FDBA74;
+
+    --neutral-bg: #1A2033;
+    --neutral-border: #232A3D;
+    --neutral-fg: #C0C7D4;
+
+    --sidebar: #0A0E1A;
+    --sidebar-raised: #151B2E;
+    --sidebar-foreground: #A5B0C4;
+    --sidebar-strong: #F2F5FA;
+    --sidebar-muted: #6B7688;
+    --sidebar-accent: #3730A3;
+    --sidebar-border: rgb(148 163 184 / 0.12);
 }
 
 @theme inline {
@@ -91,22 +221,29 @@
     --color-card-foreground: var(--card-foreground);
     --color-popover: var(--popover);
     --color-popover-foreground: var(--popover-foreground);
+    --color-sunken: var(--sunken);
     --color-primary: var(--primary);
     --color-primary-light: var(--primary-light);
+    --color-primary-dark: var(--primary-dark);
+    --color-primary-wash: var(--primary-wash);
     --color-primary-foreground: var(--primary-foreground);
     --color-secondary: var(--secondary);
     --color-secondary-foreground: var(--secondary-foreground);
     --color-muted: var(--muted);
     --color-muted-foreground: var(--muted-foreground);
+    --color-subtle-foreground: var(--subtle-foreground);
     --color-accent: var(--accent);
     --color-accent-foreground: var(--accent-foreground);
     --color-border: var(--border);
+    --color-border-strong: var(--border-strong);
     --color-input: var(--input);
     --color-ring: var(--ring);
 
     --color-success: var(--success);
     --color-warning: var(--warning);
     --color-error: var(--error);
+    --color-info: var(--info);
+    --color-escalate: var(--escalate);
 
     --color-risk-low: var(--risk-low);
     --color-risk-moderate: var(--risk-moderate);
@@ -114,7 +251,9 @@
     --color-risk-severe: var(--risk-severe);
 
     --color-sidebar: var(--sidebar);
+    --color-sidebar-raised: var(--sidebar-raised);
     --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-strong: var(--sidebar-strong);
     --color-sidebar-muted: var(--sidebar-muted);
     --color-sidebar-accent: var(--sidebar-accent);
     --color-sidebar-border: var(--sidebar-border);
@@ -123,13 +262,23 @@
     --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);
     --radius-xl: calc(var(--radius) + 4px);
+    --radius-2xl: calc(var(--radius) + 8px);
 
-    --font-sans: var(--font-inter), 'Noto Sans Devanagari', system-ui, sans-serif;
-    --font-mono: var(--font-mono-jet), ui-monospace, monospace;
+    --font-sans: var(--font-sans-public), "Noto Sans Devanagari", system-ui, sans-serif;
+    --font-display: var(--font-display-archivo), var(--font-sans-public), system-ui, sans-serif;
+    --font-mono: var(--font-mono-plex), ui-monospace, monospace;
 }
 
 * {
     border-color: var(--border);
+}
+
+html {
+    color-scheme: light;
+}
+
+html.dark {
+    color-scheme: dark;
 }
 
 body {
@@ -138,14 +287,56 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* Headings carry the display face; running text stays on Public Sans, which is
+   what an officer actually reads a queue in. */
+h1,
+h2,
+h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.018em;
+    text-wrap: balance;
+}
+
 /* Tabular figures keep dashboard numbers from jittering as they update. */
 .tnum {
     font-variant-numeric: tabular-nums;
 }
 
+/* A column label: small, spaced, quiet. Used above tables and stat groups so
+   the eye finds structure before it finds numbers. */
+.label-cap {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+}
+
+/* The one surface treatment. Anything that is a panel uses this, so every
+   surface in the app lifts off the canvas by exactly the same amount. */
+.panel {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+}
+
 :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+}
+
+/* Motion is decoration here; anyone who has asked for less should get none. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }
 
 .skip-link {
@@ -154,8 +345,9 @@ body {
     left: 0;
     z-index: 100;
     background: var(--primary);
-    color: white;
+    color: var(--primary-foreground);
     padding: 8px 16px;
+    border-radius: 0 0 var(--radius) 0;
     transition: top 0.2s;
 }
 
@@ -163,12 +355,18 @@ body {
     top: 0;
 }
 
+/* Scrollbars that do not fight the palette they sit in. */
+* {
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
+}
+
 /* Leaflet renders its own container; keep it inside our rounded corners. */
 .leaflet-container {
     height: 100%;
     width: 100%;
     font-family: inherit;
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
 }
 
 /* A sweep for skeleton placeholders. */

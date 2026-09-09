@@ -1,182 +1,39 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { CircleCheck, FileText, Loader2, PartyPopper } from 'lucide-react'
+import { CircleCheck, FileText, Loader2, PartyPopper, QrCode, Users } from 'lucide-react'
 import { apiClient } from '@/lib/api-client'
 import { messageFrom } from '@/lib/api-error'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { CardSkeleton } from '@/components/ui/skeleton'
+import { Callout } from '@/components/shared/surface'
+import { Toolbar } from '@/components/shared/controls'
+import { DataTable, Mono, RowTitle, type Column } from '@/components/shared/data-table'
 import { EmptyState, ErrorBanner } from '@/components/shared/page-header'
-import {
-    EscalationBadge,
-    PriorityBadge,
-    StatusBadge,
-} from '@/components/shared/status-badge'
+import { EscalationBadge, PriorityBadge, StatusBadge } from '@/components/shared/status-badge'
 import { DEADLINE_TONE, deadlineLabel, relativeTime } from '@/lib/format'
-import { TRADE_LABEL } from '@/lib/constants'
 import { cn } from '@/lib/utils'
-import type { CrewMember, DeskItem, Trade } from '@/types'
+import type { DeskItem } from '@/types'
+import { IssueWorkOrder } from '@/components/officer/issue-work-order'
+import { PriorityWorking } from '@/components/shared/priority-working'
 
 /**
- * Allotment: the step a naive complaint app skips.
+ * The officer's desk, as a queue.
  *
- * The Junior Engineer decides *who* does the work, from their own sector crew.
- * Without it a worker would receive complaints they have no authority to
- * triage, and the inspection afterwards would mean nothing.
+ * It used to be a stack of cards, one per complaint, each about 200px tall.
+ * That is a fine shape for reading one complaint and a poor one for the job
+ * this screen exists for: deciding what to do *next* out of thirty. An officer
+ * triages by comparing deadlines and urgency scores against each other, and
+ * cards force that comparison through a scrollbar.
+ *
+ * So the queue is a table sorted by deadline, and the work — issuing a crew,
+ * inspecting what came back, reading why GCCE scored something urgent — opens
+ * under the row it belongs to. Nothing was removed; it stopped being spread
+ * over a screen and a half each.
  */
-function AllotPanel({ task, onDone }: { task: DeskItem; onDone: () => void }) {
-    const [crew, setCrew] = useState<CrewMember[]>([])
-    const [preferredTrade, setPreferredTrade] = useState<string | null>(null)
-    const [exactTrade, setExactTrade] = useState(true)
-    const [selected, setSelected] = useState<number | null>(null)
-    const [instructions, setInstructions] = useState('')
-    const [loading, setLoading] = useState(true)
-    const [submitting, setSubmitting] = useState(false)
-    const [error, setError] = useState<string | null>(null)
-
-    useEffect(() => {
-        apiClient
-            .crewFor(task.id)
-            .then((res) => {
-                setCrew(res.items)
-                setPreferredTrade(res.preferredTrade)
-                setExactTrade(res.exactTradeAvailable)
-                // Pre-select the least-loaded member, which is what an officer
-                // picks by default anyway.
-                setSelected(res.items[0]?.userId ?? null)
-            })
-            .catch(() => setError('Could not load your sector crew.'))
-            .finally(() => setLoading(false))
-    }, [task.id])
-
-    async function allot() {
-        if (selected == null) return
-        setSubmitting(true)
-        setError(null)
-        try {
-            await apiClient.allotJob(task.id, selected, instructions || undefined)
-            onDone()
-        } catch (err) {
-            setError(messageFrom(err, 'Could not allot this job.'))
-        } finally {
-            setSubmitting(false)
-        }
-    }
-
-    if (loading) {
-        return (
-            <div className="mt-3">
-                <CardSkeleton rows={2} />
-            </div>
-        )
-    }
-
-    return (
-        <div className="mt-4 space-y-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--muted)] p-4">
-            {error && <ErrorBanner message={error} />}
-
-            <div>
-                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="text-sm font-medium">Allot to a member of your crew</p>
-                    {preferredTrade && (
-                        <span className="text-xs text-[color:var(--muted-foreground)]">
-                            {exactTrade ? (
-                                <>
-                                    Trade required:{' '}
-                                    <span className="font-medium">
-                                        {TRADE_LABEL[preferredTrade as Trade]}
-                                    </span>
-                                </>
-                            ) : (
-                                <span className="text-amber-700">
-                                    No {TRADE_LABEL[preferredTrade as Trade]} posted here — showing the
-                                    whole crew
-                                </span>
-                            )}
-                        </span>
-                    )}
-                </div>
-
-                {crew.length === 0 ? (
-                    <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                        No field workers are posted to this sector for your department. Ask the
-                        administrator to post a crew before this can be actioned.
-                    </p>
-                ) : (
-                    <div className="space-y-1.5">
-                        {crew.map((w) => (
-                            <button
-                                key={w.userId}
-                                type="button"
-                                onClick={() => setSelected(w.userId)}
-                                aria-pressed={selected === w.userId}
-                                className={cn(
-                                    'flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-all',
-                                    selected === w.userId
-                                        ? 'border-[color:var(--primary)] bg-[color:var(--accent)] ring-1 ring-[color:var(--primary)]'
-                                        : 'border-[color:var(--border)] bg-[color:var(--card)] hover:border-[color:var(--input)]',
-                                )}
-                            >
-                                <span className="min-w-0">
-                                    <span className="block text-sm font-medium">{w.fullName}</span>
-                                    <span className="block text-xs text-[color:var(--muted-foreground)]">
-                                        {w.designationTitle}
-                                        {w.employeeCode && ` · ${w.employeeCode}`}
-                                    </span>
-                                </span>
-                                <span
-                                    className={cn(
-                                        'tnum shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
-                                        w.activeJobs === 0
-                                            ? 'bg-emerald-100 text-emerald-700'
-                                            : w.activeJobs > 3
-                                              ? 'bg-amber-100 text-amber-700'
-                                              : 'bg-slate-100 text-slate-600',
-                                    )}
-                                >
-                                    {w.activeJobs} active
-                                </span>
-                            </button>
-                        ))}
-                    </div>
-                )}
-            </div>
-
-            {crew.length > 0 && (
-                <>
-                    <div>
-                        <label
-                            htmlFor={`instr-${task.id}`}
-                            className="mb-1.5 block text-sm font-medium"
-                        >
-                            Instructions for the crew{' '}
-                            <span className="font-normal opacity-60">(optional)</span>
-                        </label>
-                        <Textarea
-                            id={`instr-${task.id}`}
-                            rows={2}
-                            maxLength={2000}
-                            placeholder="e.g. Take the jetting machine. Clear the full stretch, not just the mouth."
-                            value={instructions}
-                            onChange={(e) => setInstructions(e.target.value)}
-                        />
-                    </div>
-
-                    <Button onClick={() => void allot()} disabled={submitting}>
-                        {submitting && <Loader2 className="animate-spin" />}
-                        Allot job
-                    </Button>
-                </>
-            )}
-        </div>
-    )
-}
-
-/** Inspection: accept the reported work, or send it back to the crew. */
 function InspectPanel({ task, onDone }: { task: DeskItem; onDone: () => void }) {
     const [note, setNote] = useState('')
     const [busy, setBusy] = useState<'accept' | 'reject' | null>(null)
@@ -199,10 +56,10 @@ function InspectPanel({ task, onDone }: { task: DeskItem; onDone: () => void }) 
     }
 
     return (
-        <div className="mt-4 space-y-3 rounded-lg border border-violet-200 bg-violet-50/60 p-4">
+        <div className="space-y-3 rounded-[var(--radius-lg)] border border-[color:var(--escalate-border)] bg-[color:var(--escalate-bg)] p-4">
             {error && <ErrorBanner message={error} />}
 
-            <p className="text-sm">
+            <p className="text-sm text-[color:var(--escalate-fg)]">
                 {task.assignedWorker?.fullName ?? 'The crew'} has reported this complete. Inspect the
                 work before it counts as resolved.
             </p>
@@ -238,101 +95,100 @@ function InspectPanel({ task, onDone }: { task: DeskItem; onDone: () => void }) 
     )
 }
 
-function DeskRow({ task, onChanged }: { task: DeskItem; onChanged: () => void }) {
-    const [panel, setPanel] = useState<'none' | 'allot' | 'inspect'>('none')
-    const deadline = deadlineLabel(task.slaDueAt, true)
-
-    const accent =
-        task.escalationLevel > 0
-            ? 'border-l-4 border-l-purple-500'
-            : deadline.tone === 'overdue'
-              ? 'border-l-4 border-l-red-500'
-              : deadline.tone === 'urgent'
-                ? 'border-l-4 border-l-amber-500'
-                : ''
+/** Everything about one complaint that does not belong in a column. */
+function DeskDetail({ task, onChanged }: { task: DeskItem; onChanged: () => void }) {
+    const [panel, setPanel] = useState<'none' | 'issue' | 'inspect' | 'why'>('none')
 
     return (
-        <Card className={cn('p-4', accent)}>
-            <div className="flex items-start gap-3">
-                <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[color:var(--muted)] text-lg"
-                    aria-hidden
-                >
-                    {task.category?.icon ?? '📋'}
-                </div>
+        <div className="space-y-3">
+            <p className="max-w-3xl text-sm leading-relaxed text-[color:var(--muted-foreground)]">
+                {task.description}
+            </p>
 
-                <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                        <h3 className="min-w-0 flex-1 font-medium">{task.title}</h3>
-                        <div className="flex shrink-0 flex-wrap gap-1.5">
-                            <EscalationBadge level={task.escalationLevel} />
-                            <StatusBadge status={task.status} />
-                            {task.priority !== 'MEDIUM' && <PriorityBadge priority={task.priority} />}
-                        </div>
-                    </div>
-
-                    <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-[color:var(--muted-foreground)]">
-                        {task.description}
-                    </p>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-[color:var(--muted-foreground)]">
-                        <span className="font-mono text-[11px] opacity-70">{task.referenceNo}</span>
-                        {task.sector && <span>Sector {task.sector.number}</span>}
-                        <span>filed {relativeTime(task.createdAt)}</span>
-                        <span className={cn('rounded px-1.5 py-0.5 font-medium', DEADLINE_TONE[deadline.tone])}>
-                            {deadline.text}
-                        </span>
-                        {task.assignedWorker && <span>crew: {task.assignedWorker.fullName}</span>}
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        {task.needsAllotment && (
-                            <Button
-                                size="sm"
-                                onClick={() => setPanel(panel === 'allot' ? 'none' : 'allot')}
-                                aria-expanded={panel === 'allot'}
-                            >
-                                {panel === 'allot' ? 'Close' : 'Allot to crew'}
-                            </Button>
-                        )}
-                        {task.status === 'AWAITING_VERIFICATION' && (
-                            <Button
-                                size="sm"
-                                onClick={() => setPanel(panel === 'inspect' ? 'none' : 'inspect')}
-                                aria-expanded={panel === 'inspect'}
-                            >
-                                {panel === 'inspect' ? 'Close' : 'Inspect work'}
-                            </Button>
-                        )}
-                        <Button asChild size="sm" variant="outline">
-                            <Link href={`/complaints/${task.id}`}>
-                                <FileText />
-                                Case file
-                            </Link>
-                        </Button>
-                    </div>
-
-                    {panel === 'allot' && (
-                        <AllotPanel
-                            task={task}
-                            onDone={() => {
-                                setPanel('none')
-                                onChanged()
-                            }}
-                        />
-                    )}
-                    {panel === 'inspect' && (
-                        <InspectPanel
-                            task={task}
-                            onDone={() => {
-                                setPanel('none')
-                                onChanged()
-                            }}
-                        />
-                    )}
-                </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[color:var(--muted-foreground)]">
+                <span>filed {relativeTime(task.createdAt)}</span>
+                {task.activeWorkOrder?.crew && <span>crew: {task.activeWorkOrder.crew.fullName}</span>}
             </div>
-        </Card>
+
+            {task.cluster && task.cluster.size > 1 && (
+                <Callout
+                    tone="info"
+                    icon={<Users className="h-4 w-4" aria-hidden />}
+                    title={`${task.cluster.size} residents have reported this separately`}
+                >
+                    Grouped as &ldquo;{task.cluster.label}&rdquo; — fixing it once closes all of them.
+                </Callout>
+            )}
+
+            {task.activeWorkOrder && (
+                <Callout tone="neutral" icon={<QrCode className="h-4 w-4" aria-hidden />}>
+                    Job <code className="font-mono font-semibold">{task.activeWorkOrder.code}</code> is
+                    out{' '}
+                    {task.activeWorkOrder.openedAt
+                        ? 'and has been opened'
+                        : 'but has not been opened yet'}
+                    .
+                </Callout>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+                {task.needsAllotment && (
+                    <Button
+                        size="sm"
+                        onClick={() => setPanel(panel === 'issue' ? 'none' : 'issue')}
+                        aria-expanded={panel === 'issue'}
+                    >
+                        <QrCode />
+                        {panel === 'issue' ? 'Close' : 'Give this to a crew'}
+                    </Button>
+                )}
+                {task.status === 'AWAITING_VERIFICATION' && (
+                    <Button
+                        size="sm"
+                        onClick={() => setPanel(panel === 'inspect' ? 'none' : 'inspect')}
+                        aria-expanded={panel === 'inspect'}
+                    >
+                        {panel === 'inspect' ? 'Close' : 'Inspect work'}
+                    </Button>
+                )}
+                {task.priorityScore != null && task.priorityFactors && (
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setPanel(panel === 'why' ? 'none' : 'why')}
+                        aria-expanded={panel === 'why'}
+                    >
+                        {panel === 'why' ? 'Hide the working' : 'Why is this urgent?'}
+                    </Button>
+                )}
+                <Button asChild size="sm" variant="outline">
+                    <Link href={`/complaints/${task.id}`}>
+                        <FileText />
+                        Case file
+                    </Link>
+                </Button>
+            </div>
+
+            {panel === 'issue' && (
+                <IssueWorkOrder
+                    complaintId={task.id}
+                    preferredTrade={task.category?.trade ?? null}
+                    onIssued={onChanged}
+                />
+            )}
+            {panel === 'why' && task.priorityFactors && (
+                <PriorityWorking score={task.priorityScore ?? 0} factors={task.priorityFactors} />
+            )}
+            {panel === 'inspect' && (
+                <InspectPanel
+                    task={task}
+                    onDone={() => {
+                        setPanel('none')
+                        onChanged()
+                    }}
+                />
+            )}
+        </div>
     )
 }
 
@@ -344,15 +200,17 @@ export function OfficerDeskClient({
     scope: 'active' | 'awaiting' | 'done'
 }) {
     const router = useRouter()
+    const [search, setSearch] = useState('')
+    const [openId, setOpenId] = useState<string | number | null>(null)
 
     if (tasks.length === 0) {
         return (
             <EmptyState
                 icon={
                     scope === 'awaiting' ? (
-                        <CircleCheck className="h-10 w-10" />
+                        <CircleCheck className="h-6 w-6" />
                     ) : (
-                        <PartyPopper className="h-10 w-10" />
+                        <PartyPopper className="h-6 w-6" />
                     )
                 }
                 title={
@@ -373,11 +231,117 @@ export function OfficerDeskClient({
         )
     }
 
+    const columns: Column<DeskItem>[] = [
+        {
+            key: 'ref',
+            header: 'Reference',
+            width: 'w-32',
+            value: (t) => t.referenceNo,
+            cell: (t) => <Mono>{t.referenceNo}</Mono>,
+        },
+        {
+            key: 'title',
+            header: 'Complaint',
+            value: (t) => `${t.title} ${t.description}`,
+            cell: (t) => (
+                <div className="flex items-center gap-2">
+                    <span aria-hidden>{t.category?.icon ?? '📋'}</span>
+                    <RowTitle hint={t.sector ? `Sector ${t.sector.number}` : undefined}>
+                        {t.title}
+                    </RowTitle>
+                </div>
+            ),
+        },
+        {
+            key: 'status',
+            header: 'Status',
+            value: (t) => t.status,
+            cell: (t) => (
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <StatusBadge status={t.status} />
+                    <EscalationBadge level={t.escalationLevel} />
+                </div>
+            ),
+        },
+        {
+            key: 'priority',
+            header: 'Priority',
+            secondary: true,
+            value: (t) => t.priority,
+            cell: (t) => <PriorityBadge priority={t.priority} />,
+        },
+        {
+            key: 'urgency',
+            header: 'Urgency',
+            align: 'right',
+            secondary: true,
+            value: (t) => t.priorityScore ?? null,
+            cell: (t) =>
+                t.priorityScore == null ? (
+                    <span className="text-[color:var(--subtle-foreground)]">—</span>
+                ) : (
+                    <span className="tnum font-medium">{Math.round(t.priorityScore)}</span>
+                ),
+        },
+        {
+            key: 'crew',
+            header: 'Crew',
+            secondary: true,
+            value: (t) => t.activeWorkOrder?.crew?.fullName ?? null,
+            cell: (t) =>
+                t.needsAllotment ? (
+                    <Badge variant="warning">Needs a crew</Badge>
+                ) : t.activeWorkOrder?.crew ? (
+                    <span className="text-xs">{t.activeWorkOrder.crew.fullName}</span>
+                ) : (
+                    <span className="text-[color:var(--subtle-foreground)]">—</span>
+                ),
+        },
+        {
+            key: 'deadline',
+            header: 'Deadline',
+            align: 'right',
+            // Sorted on the raw timestamp so "3h left" and "2d left" order
+            // correctly against each other rather than alphabetically.
+            value: (t) => (t.slaDueAt ? new Date(t.slaDueAt).getTime() : null),
+            cell: (t) => {
+                const d = deadlineLabel(t.slaDueAt, true)
+                return (
+                    <span
+                        className={cn(
+                            'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
+                            DEADLINE_TONE[d.tone],
+                        )}
+                    >
+                        {d.text}
+                    </span>
+                )
+            },
+        },
+    ]
+
     return (
-        <div className="space-y-3">
-            {tasks.map((task) => (
-                <DeskRow key={task.id} task={task} onChanged={() => router.refresh()} />
-            ))}
+        <div>
+            <Toolbar search={search} onSearch={setSearch} placeholder="Search your desk" />
+
+            <DataTable
+                rows={tasks}
+                columns={columns}
+                getRowId={(t) => t.id}
+                search={search}
+                initialSort={{ key: 'deadline', direction: 'asc' }}
+                rowTone={(t) =>
+                    t.isOverdue ? 'danger' : t.escalationLevel > 0 ? 'warning' : null
+                }
+                empty="Nothing on your desk matches that."
+                footnote="Red rows are past their deadline. Amber rows have already been escalated."
+                expansion={{
+                    openId,
+                    onToggle: setOpenId,
+                    label: (t) => `Work on ${t.referenceNo}`,
+                    render: (t) => <DeskDetail task={t} onChanged={() => router.refresh()} />,
+                }}
+            />
         </div>
     )
 }

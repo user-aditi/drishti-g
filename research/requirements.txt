@@ -3,3 +3,7 @@ pandas==2.2.3
 scikit-learn==1.6.1
 scipy==1.15.1
 matplotlib==3.10.0
+
+# BPI Challenge 2015 arm only. AGPL v3 — used offline in the
+# research harness, never linked into the shipped backend.
+pm4py>=2.7

@@ -16,22 +16,33 @@ services:
       timeout: 5s
       retries: 10
 
-  neo4j:
-    image: neo4j:5-community
-    container_name: drishti_neo4j
+  # Migrate and populate, once, before anything tries to read.
+  #
+  # Without this `docker compose up` on a clean machine brings three processes
+  # up against an empty database: no tables, every query failing, and a web app
+  # rendering errors. The acceptance criterion says compose brings *the whole
+  # thing* up, and three running containers with nothing in them is not that.
+  #
+  # The order is not arbitrary and is the same sequence the README documents:
+  # `org:roles` refuses to retire field-worker postings until `migrate:crew` has
+  # created the crew records they become. Run out of order it fails, which is
+  # the correct behaviour and the reason this is one command rather than four
+  # services racing.
+  setup:
+    build:
+      context: ./backend
+    container_name: drishti_setup
+    env_file: .env
     environment:
-      NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
-      NEO4J_server_memory_heap_max__size: 512m
-    ports:
-      - "7474:7474"
-      - "7687:7687"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     volumes:
-      - neo4j_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
+      - ./backend/prisma:/app/prisma
+      - ./backend/scripts:/app/scripts
+    command: ["npm", "run", "setup"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   api:
     build:
@@ -40,7 +51,6 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      NEO4J_URI: bolt://neo4j:7687
     ports:
       - "4000:4000"
     volumes:
@@ -50,8 +60,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      neo4j:
-        condition: service_healthy
+      # Wait for the database to be populated, not merely reachable.
+      setup:
+        condition: service_completed_successfully
 
   web:
     build:
@@ -72,4 +83,3 @@ services:
 
 volumes:
   postgres_data:
-  neo4j_data:

@@ -4,9 +4,11 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Inbox, SearchX } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ComplaintCard } from '@/components/shared/complaint-card'
+import { DataTable, Mono, RowTitle, type Column } from '@/components/shared/data-table'
 import { EmptyState } from '@/components/shared/page-header'
+import { StatusBadge } from '@/components/shared/status-badge'
 import { isOpen } from '@/lib/constants'
+import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Complaint } from '@/types'
 
@@ -18,6 +20,16 @@ const FILTERS: { key: Filter; label: string }[] = [
     { key: 'resolved', label: 'Resolved' },
 ]
 
+/**
+ * A resident's own complaints, as a register.
+ *
+ * The same table-then-record pattern the officers and the Super Admin use.
+ * Residents were previously given cards while every staff screen used a table,
+ * which meant two ways of reading the same object depending on who was looking
+ * at it. One reading is easier to learn and easier to keep honest — and a
+ * register is what a person tracking four complaints over a year actually
+ * wants: dates and states lined up, not a wall of tiles.
+ */
 export function CitizenComplaintsClient({ complaints }: { complaints: Complaint[] }) {
     const [filter, setFilter] = useState<Filter>('all')
 
@@ -29,15 +41,66 @@ export function CitizenComplaintsClient({ complaints }: { complaints: Complaint[
         return true
     })
 
+    const columns: Column<Complaint>[] = [
+        {
+            key: 'title',
+            header: 'Issue',
+            cell: (c) => (
+                <RowTitle hint={c.category?.name ?? undefined}>{c.title}</RowTitle>
+            ),
+            value: (c) => c.title,
+        },
+        {
+            key: 'ref',
+            header: 'Reference',
+            cell: (c) => <Mono>{c.referenceNo}</Mono>,
+            value: (c) => c.referenceNo,
+            secondary: true,
+            width: 'w-40',
+        },
+        {
+            key: 'status',
+            header: 'Status',
+            cell: (c) => <StatusBadge status={c.status} />,
+            value: (c) => c.status,
+            width: 'w-44',
+        },
+        {
+            key: 'where',
+            header: 'Where',
+            cell: (c) => (
+                <span className="text-[color:var(--muted-foreground)]">
+                    {c.sector ? `Sector ${c.sector.number}` : '—'}
+                </span>
+            ),
+            value: (c) => c.sector?.number ?? '',
+            secondary: true,
+            width: 'w-32',
+        },
+        {
+            key: 'filed',
+            header: 'Reported',
+            align: 'right',
+            cell: (c) => (
+                <span className="text-[color:var(--muted-foreground)]">
+                    {formatDate(c.createdAt)}
+                </span>
+            ),
+            value: (c) => c.createdAt,
+            width: 'w-32',
+        },
+    ]
+
     return (
         <div>
-            <div className="mb-4 flex gap-1 rounded-lg border border-[color:var(--border)] bg-[color:var(--card)] p-1">
+            <div className="mb-4 flex gap-1 rounded-md border border-[color:var(--border)] bg-[color:var(--card)] p-1">
                 {FILTERS.map(({ key, label }) => (
                     <button
                         key={key}
                         onClick={() => setFilter(key)}
+                        aria-pressed={filter === key}
                         className={cn(
-                            'flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                            'flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors',
                             filter === key
                                 ? 'bg-[color:var(--primary)] text-white'
                                 : 'text-[color:var(--muted-foreground)] hover:bg-[color:var(--muted)]',
@@ -51,12 +114,16 @@ export function CitizenComplaintsClient({ complaints }: { complaints: Complaint[
             {visible.length === 0 ? (
                 <EmptyState
                     icon={
-                        filter === 'all' ? <Inbox className="h-10 w-10" /> : <SearchX className="h-10 w-10" />
+                        filter === 'all' ? (
+                            <Inbox className="h-10 w-10" />
+                        ) : (
+                            <SearchX className="h-10 w-10" />
+                        )
                     }
                     title={filter === 'all' ? 'No complaints yet' : `Nothing ${filter}`}
                     description={
                         filter === 'all'
-                            ? 'When you report a civic issue it appears here with its full status history.'
+                            ? 'When you report a civic issue it appears here, with every step it goes through.'
                             : 'Try a different filter to see your other complaints.'
                     }
                     action={
@@ -68,11 +135,19 @@ export function CitizenComplaintsClient({ complaints }: { complaints: Complaint[
                     }
                 />
             ) : (
-                <div className="space-y-3">
-                    {visible.map((c) => (
-                        <ComplaintCard key={c.id} complaint={c} href={`/complaints/${c.id}`} />
-                    ))}
-                </div>
+                <DataTable
+                    rows={visible}
+                    columns={columns}
+                    getRowId={(c) => c.id}
+                    linkFor={(c) => `/complaints/${c.id}`}
+                    initialSort={{ key: 'filed', direction: 'desc' }}
+                    rowTone={(c) =>
+                        isOpen(c.status) && c.slaDueAt && new Date(c.slaDueAt) < new Date()
+                            ? 'danger'
+                            : null
+                    }
+                    footnote="Open a row to see every step it has been through, and who holds it now. Rows past their promised date are highlighted."
+                />
             )}
         </div>
     )

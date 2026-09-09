@@ -61,10 +61,10 @@ export function deadlineLabel(
 }
 
 export const DEADLINE_TONE: Record<DeadlineTone, string> = {
-    overdue: 'bg-red-100 text-red-700',
-    urgent: 'bg-amber-100 text-amber-700',
-    normal: 'bg-slate-100 text-slate-600',
-    none: 'bg-slate-100 text-slate-500',
+    overdue: 'bg-[color:var(--error-bg)] text-[color:var(--error-fg)]',
+    urgent: 'bg-[color:var(--warning-bg)] text-[color:var(--warning-fg)]',
+    normal: 'bg-[color:var(--neutral-bg)] text-[color:var(--neutral-fg)]',
+    none: 'bg-[color:var(--neutral-bg)] text-[color:var(--subtle-foreground)]',
 }
 
 /** "complaint.status_changed" -> "Status changed" */
@@ -85,3 +85,19 @@ export const initials = (name: string): string =>
 /** Indian digit grouping, e.g. 4500000 -> "45,00,000". */
 export const formatIndianNumber = (value: number): string =>
     new Intl.NumberFormat('en-IN').format(value)
+
+/**
+ * Rupees in the units a government budget is actually discussed in.
+ *
+ * A road contract is quoted in lakh and crore, not in eight digits — showing
+ * "₹1,25,00,000" makes the reader count zeroes to compare two rows.
+ */
+export function formatRupees(value: number | null): string {
+    if (value == null) return '—'
+    if (Math.abs(value) >= 10_000_000) return `₹${(value / 10_000_000).toFixed(2)} Cr`
+    if (Math.abs(value) >= 100_000) return `₹${(value / 100_000).toFixed(2)} L`
+    return `₹${formatIndianNumber(Math.round(value))}`
+}
+
+/** An ISO timestamp as the `yyyy-mm-dd` a date input expects. */
+export const toDateInput = (iso: string | null): string => (iso ? iso.slice(0, 10) : '')

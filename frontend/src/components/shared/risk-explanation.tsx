@@ -61,7 +61,7 @@ export function RiskExplanation({
                             </span>
                         </div>
 
-                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[color:var(--muted)]">
                             <div
                                 className={cn('h-full rounded-full transition-all', BAND_META[band].bar)}
                                 style={{ width: `${Math.max(share, inactive ? 0 : 2)}%` }}

@@ -1,16 +1,31 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma.js'
-import { graphHealth } from '../lib/neo4j.js'
-import { authenticate, requireSuperAdmin } from '../middleware/auth.js'
-import { fullSync } from '../services/graphSync.js'
 import { asyncHandler } from '../utils/http.js'
 
 export const systemRouter: Router = Router()
 
 /**
- * Unauthenticated liveness check, reporting each dependency separately so a
- * failure points at which one is down.
+ * The areas a resident can say they live in.
+ *
+ * Deliberately unauthenticated: someone registering has to choose their area
+ * before they have an account, and a picker that silently comes back empty is
+ * how people end up with no home area and a blank neighbourhood page.
+ *
+ * Only ground-floor units are offered — a resident lives on a street, not in a
+ * zone, and routing dispatches from the ground floor.
  */
+systemRouter.get(
+  '/areas',
+  asyncHandler(async (_req, res) => {
+    const areas = await prisma.orgUnit.findMany({
+      where: { isLeaf: true, isActive: true },
+      select: { id: true, name: true, code: true, kindLabel: true },
+      orderBy: { name: 'asc' },
+    })
+    res.json(areas)
+  }),
+)
+
 systemRouter.get(
   '/health',
   asyncHandler(async (_req, res) => {
@@ -21,21 +36,10 @@ systemRouter.get(
       postgres = { ok: false, detail: err instanceof Error ? err.message : String(err) }
     }
 
-    const neo4j = await graphHealth()
     res.json({
-      status: postgres.ok && neo4j.ok ? 'ok' : 'degraded',
+      status: postgres.ok ? 'ok' : 'degraded',
       postgres,
-      neo4j,
     })
   }),
 )
 
-/** Rebuild the Neo4j projection from Postgres. Idempotent. */
-systemRouter.post(
-  '/graph/sync',
-  authenticate,
-  requireSuperAdmin,
-  asyncHandler(async (_req, res) => {
-    res.json({ synced: await fullSync() })
-  }),
-)

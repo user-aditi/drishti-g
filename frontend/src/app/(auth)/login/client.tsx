@@ -9,7 +9,7 @@ import { apiClient } from '@/lib/api-client'
 import { messageFrom } from '@/lib/api-error'
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Panel } from '@/components/shared/surface'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ErrorBanner } from '@/components/shared/page-header'
@@ -50,11 +50,11 @@ export function LoginClient() {
             {/* Left: the pitch. Hidden where the form is all that matters. */}
             <div className="relative hidden flex-col justify-between bg-[color:var(--sidebar)] p-12 lg:flex">
                 <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color:var(--primary)] font-bold text-white">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-xl)] bg-[color:var(--primary)] font-bold text-white">
                         दृ
                     </div>
                     <div>
-                        <div className="font-bold tracking-tight text-white">DRISHTI-G</div>
+                        <div className="font-display font-bold tracking-tight text-white">DRISHTI-G</div>
                         <div className="text-xs uppercase tracking-wide text-[color:var(--sidebar-muted)]">
                             NOIDA Authority
                         </div>
@@ -62,7 +62,7 @@ export function LoginClient() {
                 </div>
 
                 <div className="max-w-md">
-                    <h1 className="text-3xl font-bold leading-tight text-white">
+                    <h1 className="text-3xl font-semibold leading-tight text-white">
                         One coordinator. One risk radar that explains itself.
                     </h1>
                     <p className="mt-4 leading-relaxed text-[color:var(--sidebar-foreground)]">
@@ -82,7 +82,7 @@ export function LoginClient() {
                         <div className="border-l-2 border-[color:var(--primary)] pl-4">
                             <dt className="text-sm font-semibold text-white">GRIE — the risk radar</dt>
                             <dd className="mt-0.5 text-sm text-[color:var(--sidebar-muted)]">
-                                Scores sectors, circles, zones, contractors and projects — and always shows
+                                Scores every unit of the authority, at any depth — and always shows
                                 its reasoning.
                             </dd>
                         </div>
@@ -98,14 +98,14 @@ export function LoginClient() {
             <div className="flex items-center justify-center px-4 py-12">
                 <div className="w-full max-w-sm">
                     <div className="mb-8 text-center lg:hidden">
-                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[color:var(--primary)] text-lg font-bold text-white">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[var(--radius-xl)] bg-[color:var(--primary)] text-lg font-bold text-white">
                             दृ
                         </div>
-                        <h1 className="mt-3 text-xl font-bold">DRISHTI-G</h1>
+                        <h1 className="mt-3 text-xl font-semibold">DRISHTI-G</h1>
                         <p className="text-sm text-[color:var(--muted-foreground)]">NOIDA Authority</p>
                     </div>
 
-                    <Card className="p-6">
+                    <Panel className="p-6">
                         <form onSubmit={submit} className="space-y-4">
                             <div>
                                 <h2 className="text-lg font-semibold">Sign in</h2>
@@ -157,30 +157,56 @@ export function LoginClient() {
                                 </Link>
                             </p>
                         </form>
-                    </Card>
+                    </Panel>
 
                     <div className="mt-6">
-                        <p className="mb-2 text-center text-xs font-medium uppercase tracking-wide text-[color:var(--muted-foreground)]">
-                            Demo accounts
-                        </p>
-                        <div className="space-y-1.5">
-                            {DEMO_ACCOUNTS.map((account) => (
-                                <button
-                                    key={account.email}
-                                    type="button"
-                                    onClick={() => useDemo(account.email)}
-                                    className="flex w-full items-center justify-between gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-2 text-left transition-colors hover:border-[color:var(--primary)] hover:bg-[color:var(--accent)]/40"
-                                >
-                                    <span className="min-w-0">
-                                        <span className="block text-xs font-semibold">{account.label}</span>
-                                        <span className="block truncate text-[11px] text-[color:var(--muted-foreground)]">
-                                            {account.hint}
-                                        </span>
-                                    </span>
-                                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-[color:var(--primary)]" />
-                                </button>
-                            ))}
-                        </div>
+                        <p className="label-cap mb-2 text-center">Demo accounts</p>
+
+                        {/* Five accounts, each with the same two facts: what they
+                            are and what they can see. That is a table, and as a
+                            table a reviewer can compare the layers of the
+                            authority instead of reading five paragraphs. */}
+                        <Panel flush>
+                            <table className="w-full border-collapse text-left text-sm">
+                                <caption className="sr-only">
+                                    Demo accounts — choose one to fill the sign-in form
+                                </caption>
+                                <tbody className="divide-y divide-[color:var(--border)]">
+                                    {DEMO_ACCOUNTS.map((account) => (
+                                        <tr
+                                            key={account.email}
+                                            className="cursor-pointer transition-colors hover:bg-[color:var(--sunken)]"
+                                            onClick={() => useDemo(account.email)}
+                                        >
+                                            <td className="py-2.5 pl-3 pr-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        useDemo(account.email)
+                                                    }}
+                                                    className="block text-left"
+                                                >
+                                                    <span className="block text-xs font-semibold">
+                                                        {account.label}
+                                                    </span>
+                                                    <span className="mt-0.5 block text-[11px] leading-snug text-[color:var(--muted-foreground)]">
+                                                        {account.hint}
+                                                    </span>
+                                                </button>
+                                            </td>
+                                            <td className="w-8 pr-3 text-right">
+                                                <ArrowRight
+                                                    className="inline h-3.5 w-3.5 text-[color:var(--primary)]"
+                                                    aria-hidden
+                                                />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </Panel>
+
                         <p className="mt-2 text-center text-[11px] text-[color:var(--muted-foreground)]">
                             All demo accounts use the password{' '}
                             <code className="font-mono">{DEMO_PASSWORD}</code>

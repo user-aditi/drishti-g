@@ -45,8 +45,6 @@ export function homeFor(rank: Rank): string {
     switch (rank) {
         case 'CITIZEN':
             return '/dashboard'
-        case 'FIELD_WORKER':
-            return '/worker/jobs'
         case 'SECTION_OFFICER':
             return '/officer/desk'
         default:

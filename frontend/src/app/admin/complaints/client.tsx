@@ -8,9 +8,11 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { ComplaintCard } from '@/components/shared/complaint-card'
+import { DataTable, Mono, RowTitle, type Column } from '@/components/shared/data-table'
 import { EmptyState } from '@/components/shared/page-header'
-import { STATUS_META } from '@/lib/constants'
+import { PriorityBadge, StatusBadge } from '@/components/shared/status-badge'
+import { isOpen, STATUS_META } from '@/lib/constants'
+import { deadlineLabel } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { Complaint, ComplaintStatus, Paged, Sector } from '@/types'
 
@@ -55,6 +57,90 @@ export function ComplaintsBrowserClient({
 
         startTransition(() => router.push(`${pathname}?${params}`))
     }
+
+    /**
+     * The same columns a resident and the Super Admin see, plus the two an
+     * officer working a queue needs: who holds it, and how long is left.
+     *
+     * Complaints are read as a register everywhere in this system now — the
+     * card layout that used to live here was the last screen disagreeing.
+     */
+    const columns: Column<Complaint>[] = [
+        {
+            key: 'title',
+            header: 'Issue',
+            cell: (c) => <RowTitle hint={c.category?.name ?? undefined}>{c.title}</RowTitle>,
+            value: (c) => c.title,
+        },
+        {
+            key: 'ref',
+            header: 'Reference',
+            cell: (c) => <Mono>{c.referenceNo}</Mono>,
+            value: (c) => c.referenceNo,
+            secondary: true,
+            width: 'w-40',
+        },
+        {
+            key: 'status',
+            header: 'Status',
+            cell: (c) => <StatusBadge status={c.status} />,
+            value: (c) => c.status,
+            width: 'w-44',
+        },
+        {
+            key: 'priority',
+            header: 'Priority',
+            cell: (c) => <PriorityBadge priority={c.priority} />,
+            value: (c) => c.priority,
+            secondary: true,
+            width: 'w-28',
+        },
+        {
+            key: 'where',
+            header: 'Where',
+            cell: (c) => (
+                <span className="text-[color:var(--muted-foreground)]">
+                    {c.sector ? `Sector ${c.sector.number}` : '—'}
+                </span>
+            ),
+            value: (c) => c.sector?.number ?? '',
+            secondary: true,
+            width: 'w-32',
+        },
+        {
+            key: 'owner',
+            header: 'With',
+            cell: (c) => (
+                <span className="text-[color:var(--muted-foreground)]">
+                    {c.assignedOfficer?.fullName ?? 'Unassigned'}
+                </span>
+            ),
+            value: (c) => c.assignedOfficer?.fullName ?? '',
+            secondary: true,
+        },
+        {
+            key: 'due',
+            header: 'Deadline',
+            align: 'right',
+            cell: (c) => {
+                const label = deadlineLabel(c.slaDueAt, isOpen(c.status))
+                return (
+                    <span
+                        className={cn(
+                            label.tone === 'overdue' && 'font-semibold text-[color:var(--error)]',
+                            label.tone === 'urgent' && 'font-medium text-[color:var(--warning-fg)]',
+                            (label.tone === 'none' || label.tone === 'normal') &&
+                                'text-[color:var(--muted-foreground)]',
+                        )}
+                    >
+                        {label.text}
+                    </span>
+                )
+            },
+            value: (c) => c.slaDueAt ?? '',
+            width: 'w-36',
+        },
+    ]
 
     // Debounce the search box so typing does not fire a navigation per keystroke.
     useEffect(() => {
@@ -106,7 +192,7 @@ export function ComplaintsBrowserClient({
                                 'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
                                 filters.status === s
                                     ? 'bg-[color:var(--primary)] text-white'
-                                    : 'bg-[color:var(--muted)] text-[color:var(--muted-foreground)] hover:bg-slate-200',
+                                    : 'bg-[color:var(--muted)] text-[color:var(--muted-foreground)] hover:bg-[color:var(--border)]',
                             )}
                         >
                             {s === '' ? 'All' : STATUS_META[s].label}
@@ -117,21 +203,25 @@ export function ComplaintsBrowserClient({
 
             {result.items.length === 0 ? (
                 <EmptyState
-                    icon={<SearchX className="h-10 w-10" />}
+                    icon={<SearchX className="h-6 w-6" />}
                     title="No complaints match"
                     description="Try clearing the filters or searching for something else."
                 />
             ) : (
                 <>
-                    <div className={cn('space-y-3 transition-opacity', pending && 'opacity-60')}>
-                        {result.items.map((c) => (
-                            <ComplaintCard
-                                key={c.id}
-                                complaint={c}
-                                href={`/complaints/${c.id}`}
-                                showDeadline
-                            />
-                        ))}
+                    <div className={cn('transition-opacity', pending && 'opacity-60')}>
+                        <DataTable
+                            rows={result.items}
+                            columns={columns}
+                            getRowId={(c) => c.id}
+                            linkFor={(c) => `/complaints/${c.id}`}
+                            rowTone={(c) =>
+                                isOpen(c.status) && c.slaDueAt && new Date(c.slaDueAt) < new Date()
+                                    ? 'danger'
+                                    : null
+                            }
+                            footnote="Rows past their deadline are highlighted. Open one for its full history."
+                        />
                     </div>
 
                     <div className="mt-5 flex items-center justify-between">

@@ -23,8 +23,8 @@ export function AppShell({ user, children }: { user: User; children: ReactNode }
 
             <div className="flex min-w-0 flex-1 flex-col">
                 <AppTopbar />
-                <main id="main-content" className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-                    <div className="mx-auto w-full max-w-6xl">{children}</div>
+                <main id="main-content" className="flex-1 px-4 py-8 sm:px-6 lg:px-8">
+                    <div className="mx-auto w-full max-w-7xl">{children}</div>
                 </main>
             </div>
         </div>
