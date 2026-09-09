@@ -37,3 +37,11 @@ research/data/sim-labels.csv
 research/data/event-log.csv
 research/data/resolutions.csv
 research/data/bpic2018/
+
+# The NYC 311 corpus is 150MB of downloaded public data, re-pullable with
+# `python -m drishti_research.nyc_pull`. Its manifest and the derived SLA table
+# ARE committed: they are what makes a re-pull checkable — the manifest records
+# the vintage and filter, and the SLA table is a declared constant the backend
+# imports against.
+research/data/nyc/brooklyn.csv
+research/data/nyc/parts/

@@ -1,0 +1,7 @@
+complaint_type,agency,requests,closed_requests,closed_share,p50_hours,sla_hours,p90_hours,provenance
+Sewer,DEP,32907,32133,0.9764791685659586,3.4166666666666665,19.05,46.606666666666634,"derived: p75 of observed time-to-close per complaint type, NYC 311 Brooklyn 2022-2025. NYC publishes no due_date for these types."
+Water System,DEP,70687,70071,0.9912855263344038,6.866666666666666,47.63333333333333,197.95,"derived: p75 of observed time-to-close per complaint type, NYC 311 Brooklyn 2022-2025. NYC publishes no due_date for these types."
+Dirty Condition,DSNY,71126,70742,0.994601130388325,35.446666666666665,95.20250000000001,293.7860833333335,"derived: p75 of observed time-to-close per complaint type, NYC 311 Brooklyn 2022-2025. NYC publishes no due_date for these types."
+Street Condition,DOT,73720,72725,0.9865029842647857,37.58361111111111,110.29666666666668,339.6616111111111,"derived: p75 of observed time-to-close per complaint type, NYC 311 Brooklyn 2022-2025. NYC publishes no due_date for these types."
+Missed Collection,DSNY,69427,69426,0.9999855963818111,77.17458333333335,159.32895833333333,312.7526388888889,"derived: p75 of observed time-to-close per complaint type, NYC 311 Brooklyn 2022-2025. NYC publishes no due_date for these types."
+Street Light Condition,DOT,37563,34379,0.9152357372946782,139.4,244.0,1881.1200000000026,"derived: p75 of observed time-to-close per complaint type, NYC 311 Brooklyn 2022-2025. NYC publishes no due_date for these types."

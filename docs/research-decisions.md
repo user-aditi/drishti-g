@@ -980,3 +980,221 @@ That is a materially different claim from a failed replication, and it is the
 one the paper must make.
 
 Data: `research/results/calibration.csv`, `explanation-cost-bpic.csv`.
+
+---
+
+## Phase 0 — is NYC 311 a corpus this study can stand on?
+
+Every number above comes from BPI Challenge logs or from constructed panels. This
+entry is the first from **NYC 311 Service Requests** (NYC Open Data, dataset
+`erm2-nwe9`, used under its published terms with attribution), and it exists to
+decide, before any application code is written, whether a faithful replica of a
+real municipal service-request system can carry the study.
+
+Slice: Brooklyn, 18 community boards, 2022-01-01 to 2025-12-31, six complaint
+types that map onto our categories. **355,430 requests.** Vintage recorded in
+`research/data/nyc/brooklyn.meta.json`; the corpus itself is re-pullable with
+`python -m drishti_research.nyc_pull` and deliberately not vendored.
+
+### V1 — `due_date` is not sparse on this corpus. It is absent.
+
+F-10 asked whether GRIE's heaviest factor — `slaBreachRate`, weight 0.28 — has a
+source column here, after one Street Light request came back from Socrata with no
+`due_date` key at all.
+
+| Agency | Requests | `due_date` coverage |
+|---|---|---|
+| DSNY | 140,553 | **0.0%** |
+| DOT | 111,283 | **0.0%** |
+| DEP | 103,594 | **0.0%** |
+
+Zero of 355,430. This was checked against the dataset metadata rather than
+inferred from a null count, because a 0% that is really a query bug would be a
+bad thing to pass a gate on: `due_date` **is** populated in this dataset — 2022
+Graffiti requests carry one — and it is empty for every one of our six types.
+The mechanism works; the column is genuinely not published for this work.
+
+Gate 0 anticipated this and rules it not a blocker, on condition the fallback is
+**declared**. It is, in `drishti_research/nyc_sla.py`:
+
+| Complaint type | Agency | p50 hours | **derived SLA (p75)** | p90 hours |
+|---|---|---|---|---|
+| Sewer | DEP | 3.4 | **19.1** | 46.6 |
+| Water System | DEP | 6.9 | **47.6** | 197.9 |
+| Dirty Condition | DSNY | 35.4 | **95.2** | 293.8 |
+| Street Condition | DOT | 37.6 | **110.3** | 339.7 |
+| Missed Collection | DSNY | 77.2 | **159.3** | 312.8 |
+| Street Light Condition | DOT | 139.4 | **244.0** | 1,881.1 |
+
+**`slaBreachRate` on this corpus therefore means "closed slower than the citywide
+75th percentile for this complaint type", not "broke a promise the City made".**
+Every use of it, in the paper and in the product, has to say so. This is the same
+trap the 17 assumed constants in `calibration.py` fell into, and the only thing
+separating a derived constant from an invented one is the declaration.
+
+The p75 is taken over the whole corpus, never per unit: an SLA fitted per board
+would define every board as breaching a quarter of the time and the signal would
+carry no information at all.
+
+### V2 — the pull, and two API faults worth keeping
+
+355,430 requests, all 18 community boards present, 1.5% unplaceable (no community
+board — dropped rather than bucketed, which would have invented a nineteenth
+unit). The independent V1 scan and the V2 pull agree on the row count exactly and
+on every per-type median to one decimal, which is the cross-check that the paging
+is neither skipping nor duplicating rows.
+
+**F-11 reproduced deliberately.** The obvious coverage query — a filtered
+`$group` over agency and complaint type — times out at 180 seconds even scoped to
+Brooklyn and six types. Nothing in this arm aggregates server-side.
+
+**F-17, new.** The JSON endpoint could not deliver a single wide page in eight
+minutes, at 50,000 rows and then again at 10,000. Timing individual calls showed
+the cost is server-side per-request work rather than payload: 3 columns × 1,000
+rows took 32 seconds, 22 columns × 1,000 rows took 6. The CSV export endpoint —
+the documented bulk path — returns 100,000 rows over the same 22 columns in about
+50 seconds. Pages are now cached to disk as they arrive, so a timeout costs one
+page rather than the whole pull.
+
+### V3 — the panel, and the power problem this fixes
+
+**2,538 unit-months** across 54 units (3 agencies × 18 boards), 2022-01 to
+2025-11, at a median 121 requests per unit-month. Positive rate 20.0%, labelled
+forward-looking exactly as the BPIC arms are: next month's breach rate at or above
+the panel's 80th percentile (0.348).
+
+That is roughly ten times BPIC 2015's 268 unit-periods and eight times BPIC
+2018's 326. N3 recorded why that matters: BPIC 2018's minimum detectable gap was
+0.0655 against an effect of 0.0553, so it could not have detected the effect it
+was testing for, and its null was uninformative. This panel could.
+
+DPR does not appear: NYC has no public-toilet analogue, so the plan's fourth
+agency has no data and three agencies is what the corpus supports.
+
+**One signal definition had to change, and the reason is F-01 again.**
+Production keys recurrence on (category, org unit), because a NOIDA sector
+carries a handful of complaints a month. A Brooklyn community board carries
+hundreds, and at that key essentially every request has *some* earlier closed
+request of its type somewhere in the board — the rate saturates near 1.0 and
+silently becomes a volume measure, which is precisely the fault F-01 recorded.
+The key here is the **incident address**, which is what "the repair did not hold"
+actually means. Measured mean 0.436, range 0 to 0.800: not saturated.
+
+`escalationRate` is an analogue, since NYC records no escalation (F-12). It is
+read off the agency's own resolution text: the case was either **referred out of
+jurisdiction** to another agency, or closed by **issuing a violation, summons or
+corrective action** rather than by fixing the thing. Both mean the receiving
+agency could not simply resolve it. Same move BPIC 2015 made with its extended
+and appeal subprocesses.
+
+### V4 — the kill switch, and it passes wide
+
+Lag-1 autocorrelation of the target, against the feasibility floor of ≈ +0.30
+established by pooling the BPIC panels:
+
+| Panel | AR(1) | |
+|---|---|---|
+| **NYC 311 Brooklyn** | **+0.7703** | pooled over all within-unit month pairs |
+| BPIC 2015 | +0.7020 | forecastable |
+| feasibility floor | +0.3000 | |
+| BPIC 2018 | +0.1410 | not forecastable |
+
+Per-unit median +0.5564 (IQR +0.308 to +0.756); 75.9% of units sit above the
+floor. The pooled figure runs higher than the per-unit median, as expected — it
+is dominated by the long-lived, high-variance units — and both are far enough
+above the floor that the verdict does not turn on which is quoted.
+
+**Not uniform across agencies.** DSNY units have a median persistence of +0.8488,
+DOT +0.5564, and **DEP +0.2523 — below the floor**. Whatever this study concludes
+about DEP boards is conclusion drawn under the scope condition, not despite it,
+and the paper should say so rather than reporting one panel-wide number.
+
+### V5 — the advantage does not replicate, and this time that means something
+
+Five models, 5 repeats of 5-fold, grouped by unit so no board straddles a split:
+
+| Model | test AUC | sd | train AUC | overfit |
+|---|---|---|---|---|
+| Logistic regression | **0.8189** | 0.0373 | 0.8228 | +0.0039 |
+| GRIE (tuned weights) | 0.8117 | 0.0377 | 0.8130 | +0.0013 |
+| Gradient boosting | 0.8097 | 0.0418 | 0.8348 | +0.0250 |
+| Random forest | 0.8078 | 0.0425 | 0.9009 | +0.0931 |
+| **GRIE (hand-specified)** | **0.6869** | 0.0424 | 0.6847 | −0.0022 |
+
+Paired bootstrap on the gap, 2,000 resamples:
+
+| Comparison | Gap | 95% CI | |
+|---|---|---|---|
+| GRIE − gradient boosting | −0.1230 | [−0.1474, −0.0980] | **behind** |
+| GRIE − random forest | −0.1251 | [−0.1509, −0.1004] | **behind** |
+| GRIE (tuned) − gradient boosting | +0.0055 | [−0.0020, +0.0129] | no detectable difference |
+| GRIE (tuned) − random forest | +0.0033 | [−0.0073, +0.0146] | no detectable difference |
+| Logistic − gradient boosting | +0.0125 | [+0.0071, +0.0177] | **ahead** |
+| Logistic − random forest | +0.0104 | [+0.0016, +0.0193] | **ahead** |
+
+**The BPIC 2015 result does not replicate here, and unlike BPIC 2018 this panel
+could have detected it.** 2,538 unit-months against an effect of +0.0553: the gap
+observed here is −0.123, more than twice the size of the effect in the opposite
+direction, with an interval nowhere near zero. This is not an underpowered null.
+
+**But the failure is not interpretability's.** Three readings of the same table,
+and only the third survives:
+
+*"Black boxes win on real municipal data"* — contradicted by the top row. The
+best model on this panel is **logistic regression**, which is fully interpretable,
+linear, and ahead of both black boxes by an interval that excludes zero.
+
+*"Weighted sums are too weak for this problem"* — contradicted by row two. GRIE
+with tuned weights **is** a weighted sum of the same five factors on the same
+0-100 scale, still non-negative, still summing to one, still explainable
+factor-by-factor. It reaches parity with both black boxes.
+
+*"GRIE's hand-chosen weights encode NOIDA semantics that do not transfer"* — this
+is what the data says, and **N6 asked for exactly this answer rather than an
+assumption.** The mechanism is visible in the panel: `repeatComplaintRate`
+(r = −0.162) and `escalationRate` (r = −0.137) correlate **negatively** with next
+month's failure on this corpus, while GRIE's weighted sum assumes all five
+factors are positively oriented and assigns them a combined 0.47 weight. It is
+adding 47% of its score from two signals pointing the wrong way. Re-tuning
+recovers the entire 0.125 gap.
+
+### What Phase 0 decided
+
+| Gate 0 condition | Threshold | Measured | |
+|---|---|---|---|
+| Target persistence | AR(1) ≥ 0.30 | **+0.7703** | PASS |
+| Panel size | ≥ 1,000 rows | **2,538** | PASS |
+| `due_date` coverage | ≥ 60% | **0.0%** | fallback taken and declared — not a blocker |
+| Any model beats chance | CI lower > 0.5 | **0.7993** | PASS |
+
+**Proceed to Phase 1.**
+
+Three consequences that are not optional:
+
+**GRIE must not ship against NYC data with its NOIDA weights.** It would be a
+risk register that is 0.125 AUC worse than a logistic regression while claiming
+to be the explainable option, and the explanation it printed would attribute
+risk to two factors that are protective here. Phase 7 ships the tuned weights, or
+re-derives the factor set for this domain, and reports which.
+
+**The orientation of every factor has to be re-checked per domain, not assumed.**
+This is the generalisable version of the finding, and it is worth more to the
+paper than the original replication would have been: a hand-specified governance
+score is portable in *form* and not in *coefficients*, and the cost of assuming
+otherwise is measurable at 0.125 AUC.
+
+**The negative correlations need one more look before Phase 7.** Within-agency,
+the signs are not stable — DSNY shows `repeatComplaintRate` at −0.522 and
+`escalationRate` at −0.482, while DEP shows +0.112 and −0.088. Three of the five
+signals carry substantial between-agency variance (η² of 0.53 for
+`openComplaintLoad`, 0.39 for `escalationRate`, 0.26 for `repeatComplaintRate`),
+so part of what these features encode is *which agency and which complaint-type
+mix*, not *how this unit is performing*. `slaBreachRate` is clean on that test
+(η² = 0.005). Every model here gets the same features so the comparison is fair,
+but a per-unit risk score built on features that are partly agency identity is a
+different product from one built on unit performance, and Phase 7 has to
+establish which one GRIE is.
+
+Data: `research/results/nyc-interpretability.csv`,
+`nyc-interpretability-gaps.csv`, `research/data/nyc/due-date-coverage.csv`,
+`sla-table.csv`.

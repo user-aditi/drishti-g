@@ -1,0 +1,26 @@
+{
+  "dataset": "erm2-nwe9",
+  "pulled_at": "2026-09-09T22:34:59+00:00",
+  "borough": "BROOKLYN",
+  "period": [
+    "2022-01-01T00:00:00",
+    "2026-01-01T00:00:00"
+  ],
+  "complaint_types": [
+    "Street Condition",
+    "Street Light Condition",
+    "Sewer",
+    "Water System",
+    "Missed Collection",
+    "Dirty Condition"
+  ],
+  "where": "borough = 'BROOKLYN' AND created_date >= '2022-01-01T00:00:00' AND created_date < '2026-01-01T00:00:00' AND complaint_type in ('Street Condition', 'Street Light Condition', 'Sewer', 'Water System', 'Missed Collection', 'Dirty Condition')",
+  "checks": {
+    "rows": 355430,
+    "rows_pass": true,
+    "boards": 18,
+    "boards_pass": true,
+    "unplaced": 5404
+  },
+  "attribution": "NYC Open Data, 311 Service Requests (erm2-nwe9)"
+}

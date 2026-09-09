@@ -1,0 +1,13 @@
+{
+  "derived_at": "2026-09-09T22:35:24+00:00",
+  "quantile": 0.75,
+  "provenance": "derived: p75 of observed time-to-close per complaint type, NYC 311 Brooklyn 2022-2025. NYC publishes no due_date for these types.",
+  "sla_hours": {
+    "Sewer": 19.05,
+    "Water System": 47.63,
+    "Dirty Condition": 95.2,
+    "Street Condition": 110.3,
+    "Missed Collection": 159.33,
+    "Street Light Condition": 244.0
+  }
+}
