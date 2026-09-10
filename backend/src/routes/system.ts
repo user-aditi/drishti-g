@@ -1,18 +1,18 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma.js'
+import { referenceDate } from '../config/systemClock.js'
 import { asyncHandler } from '../utils/http.js'
 
 export const systemRouter: Router = Router()
 
 /**
- * The areas a resident can say they live in.
+ * The community boards someone can say they live in.
  *
- * Deliberately unauthenticated: someone registering has to choose their area
- * before they have an account, and a picker that silently comes back empty is
- * how people end up with no home area and a blank neighbourhood page.
+ * Deliberately unauthenticated: someone registering has to pick a board before
+ * they have an account, and a picker that silently comes back empty is how
+ * people end up with no home area and a blank intake form.
  *
- * Only ground-floor units are offered — a resident lives on a street, not in a
- * zone, and routing dispatches from the ground floor.
+ * Leaves only. A resident lives in a community board, not in a borough.
  */
 systemRouter.get(
   '/areas',
@@ -20,7 +20,7 @@ systemRouter.get(
     const areas = await prisma.orgUnit.findMany({
       where: { isLeaf: true, isActive: true },
       select: { id: true, name: true, code: true, kindLabel: true },
-      orderBy: { name: 'asc' },
+      orderBy: { code: 'asc' },
     })
     res.json(areas)
   }),
@@ -39,7 +39,10 @@ systemRouter.get(
     res.json({
       status: postgres.ok ? 'ok' : 'degraded',
       postgres,
+      // Surfaced because almost every date on every screen is read against it
+      // rather than against the wall clock, and an operator looking at an
+      // "overdue" count needs to know which day the system thinks it is.
+      referenceDate: referenceDate(),
     })
   }),
 )
-

@@ -4,12 +4,17 @@ import { auth, homeFor } from '@/lib/auth'
 export const dynamic = 'force-dynamic'
 
 /**
- * Auth screens render outside the app shell — there is no navigation to show
- * yet — and bounce anyone who is already signed in.
+ * The sign-in screens sit inside the normal shell — header, footer, disclaimer
+ * — because the footer's labelling obligation has no exceptions, and someone
+ * arriving straight at a login page is exactly the reader most likely to
+ * mistake this for the City's own service.
+ *
+ * Anyone already signed in is bounced to their own first screen; a sign-in form
+ * offered to someone with a session is a dead end that looks like a bug.
  */
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
     const user = await auth()
-    if (user) redirect(homeFor(user.rank))
+    if (user) redirect(homeFor(user.role))
 
-    return <div className="min-h-screen">{children}</div>
+    return <>{children}</>
 }

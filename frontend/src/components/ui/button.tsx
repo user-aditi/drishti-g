@@ -3,32 +3,34 @@ import { Slot } from '@radix-ui/react-slot'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
+/**
+ * Buttons are outlined, not shadowed.
+ *
+ * This whole interface is built out of 1px lines, and a button that floats
+ * above the page reads as a different design language from the register it
+ * sits on top of. The primary action gets the institutional blue; everything
+ * else is a line.
+ */
 const buttonVariants = cva(
-    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-lg)] text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)] disabled:pointer-events-none disabled:opacity-50 active:translate-y-px [&_svg]:size-4 [&_svg]:shrink-0',
+    'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius)] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0',
     {
         variants: {
             variant: {
-                default:
-                    'bg-[color:var(--primary)] text-[color:var(--primary-foreground)] shadow-[var(--shadow-xs)] hover:bg-[color:var(--primary-light)]',
+                primary: 'bg-brand text-white hover:opacity-90',
                 outline:
-                    'border border-[color:var(--input)] bg-[color:var(--card)] text-[color:var(--foreground)] shadow-[var(--shadow-xs)] hover:border-[color:var(--border-strong)] hover:bg-[color:var(--sunken)]',
-                secondary:
-                    'bg-[color:var(--muted)] text-[color:var(--foreground)] hover:bg-[color:var(--border)]',
-                ghost: 'text-[color:var(--muted-foreground)] hover:bg-[color:var(--muted)] hover:text-[color:var(--foreground)]',
-                destructive:
-                    'bg-[color:var(--error)] text-white shadow-[var(--shadow-xs)] hover:opacity-90',
-                success: 'bg-[color:var(--success)] text-white shadow-[var(--shadow-xs)] hover:opacity-90',
-                link: 'text-[color:var(--primary)] underline-offset-4 hover:underline',
+                    'border border-line-strong bg-surface text-ink hover:bg-sunk',
+                quiet: 'text-ink-mid hover:bg-sunk hover:text-ink',
+                link: 'text-brand underline-offset-4 hover:underline',
+                danger: 'border border-stop bg-transparent text-stop hover:bg-stop-soft',
             },
             size: {
-                default: 'h-10 px-4 py-2',
-                sm: 'h-8 rounded-[var(--radius-md)] px-3 text-xs',
-                lg: 'h-12 rounded-[var(--radius-lg)] px-6 text-base',
-                icon: 'h-10 w-10',
-                'icon-sm': 'h-8 w-8 rounded-[var(--radius-md)]',
+                default: 'h-9 px-4 text-base',
+                sm: 'h-8 px-3 text-sm',
+                lg: 'h-11 px-6 text-lg',
+                icon: 'h-9 w-9',
             },
         },
-        defaultVariants: { variant: 'default', size: 'default' },
+        defaultVariants: { variant: 'primary', size: 'default' },
     },
 )
 
@@ -41,7 +43,9 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ({ className, variant, size, asChild = false, ...props }, ref) => {
         const Comp = asChild ? Slot : 'button'
-        return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+        return (
+            <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+        )
     },
 )
 Button.displayName = 'Button'

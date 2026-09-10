@@ -6,32 +6,34 @@ import { cn } from '@/lib/utils'
 
 type Choice = 'light' | 'dark' | 'system'
 
-const STORAGE_KEY = 'drishti-theme'
+const STORAGE_KEY = 'layer0-theme'
 
 /**
  * The boot script, inlined into the document head.
  *
- * Theme has to be resolved before the first paint or the officer gets a white
- * flash on every navigation, which on a dark-mode desk at night is genuinely
- * unpleasant. This runs synchronously, ahead of React, and only ever adds or
- * removes one class.
+ * The theme has to resolve before the first paint or every navigation flashes
+ * white. This runs synchronously, ahead of React, and only ever sets or clears
+ * one attribute — which is also why the palette keys off `data-theme` rather
+ * than a class: `system` is the *absence* of the attribute, so the CSS media
+ * query can own that case and this script does not have to ask the OS at all.
  */
 export const THEME_BOOT_SCRIPT = `
 (function () {
   try {
     var stored = localStorage.getItem('${STORAGE_KEY}');
-    var dark = stored === 'dark' || ((!stored || stored === 'system') &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches);
-    document.documentElement.classList.toggle('dark', dark);
+    if (stored === 'dark' || stored === 'light') {
+      document.documentElement.setAttribute('data-theme', stored);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
   } catch (e) {}
 })();
 `
 
 function apply(choice: Choice) {
-    const dark =
-        choice === 'dark' ||
-        (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-    document.documentElement.classList.toggle('dark', dark)
+    const root = document.documentElement
+    if (choice === 'system') root.removeAttribute('data-theme')
+    else root.setAttribute('data-theme', choice)
 }
 
 const OPTIONS: { value: Choice; label: string; icon: typeof Sun }[] = [
@@ -43,31 +45,32 @@ const OPTIONS: { value: Choice; label: string; icon: typeof Sun }[] = [
 /**
  * Light, dark, or whatever the machine says.
  *
- * "System" is the default rather than light, because a municipal officer's
- * desktop policy is not this app's business to override.
+ * "System" is the default rather than light, because a person's own display
+ * settings are not this application's business to override.
  */
 export function ThemeToggle({ className }: { className?: string }) {
     const [choice, setChoice] = useState<Choice>('system')
     const [ready, setReady] = useState(false)
 
     useEffect(() => {
-        const stored = (localStorage.getItem(STORAGE_KEY) as Choice | null) ?? 'system'
+        let stored: Choice = 'system'
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY)
+            if (raw === 'dark' || raw === 'light') stored = raw
+        } catch {
+            // Storage blocked: system it is.
+        }
         setChoice(stored)
         setReady(true)
     }, [])
 
-    // Following the machine means following it as it changes, not only at boot.
-    useEffect(() => {
-        if (choice !== 'system') return
-        const media = window.matchMedia('(prefers-color-scheme: dark)')
-        const onChange = () => apply('system')
-        media.addEventListener('change', onChange)
-        return () => media.removeEventListener('change', onChange)
-    }, [choice])
-
     function pick(next: Choice) {
         setChoice(next)
-        localStorage.setItem(STORAGE_KEY, next)
+        try {
+            localStorage.setItem(STORAGE_KEY, next)
+        } catch {
+            // The choice still applies for this page load.
+        }
         apply(next)
     }
 
@@ -76,7 +79,7 @@ export function ThemeToggle({ className }: { className?: string }) {
             role="group"
             aria-label="Colour theme"
             className={cn(
-                'inline-flex items-center gap-0.5 rounded-[var(--radius-lg)] border border-[color:var(--border)] bg-[color:var(--sunken)] p-0.5',
+                'inline-flex items-center rounded-[var(--radius)] border border-line bg-surface p-0.5',
                 className,
             )}
         >
@@ -90,10 +93,8 @@ export function ThemeToggle({ className }: { className?: string }) {
                         aria-pressed={active}
                         title={opt.label}
                         className={cn(
-                            'inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius-md)] transition-colors',
-                            active
-                                ? 'bg-[color:var(--card)] text-[color:var(--foreground)] shadow-[var(--shadow-xs)]'
-                                : 'text-[color:var(--subtle-foreground)] hover:text-[color:var(--foreground)]',
+                            'inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius)] transition-colors',
+                            active ? 'bg-sunk text-ink' : 'text-ink-soft hover:text-ink',
                         )}
                     >
                         <opt.icon className="h-3.5 w-3.5" aria-hidden />

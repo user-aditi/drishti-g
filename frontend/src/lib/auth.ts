@@ -1,13 +1,15 @@
 import { redirect } from 'next/navigation'
 import { serverFetch } from './api'
-import { RANK_LEVEL } from './constants'
-import type { Rank, User } from '@/types'
+import { homeFor } from './routes'
+import type { Role, User } from '@/types'
+
+export { homeFor }
 
 /**
  * The current session, resolved on the server from the httpOnly cookie.
  *
  * Returns null rather than throwing when nobody is signed in, so a layout can
- * decide where to send them.
+ * decide where to send them instead of falling into an error boundary.
  */
 export async function auth(): Promise<User | null> {
     try {
@@ -18,36 +20,15 @@ export async function auth(): Promise<User | null> {
 }
 
 /**
- * Require a signed-in user, optionally of a minimum rank.
+ * Require a signed-in user, and optionally a role.
  *
- * Guarding here rather than in the browser means a page never renders before
- * the check runs — there is no protected content in the HTML for an
- * unauthorised viewer to see, even briefly.
+ * Guarding on the server rather than in the browser means the page never
+ * renders before the check runs: there is no queue data in the HTML for an
+ * unauthorised viewer to read out of the source, even briefly.
  */
-export async function requireUser(minRank?: Rank): Promise<User> {
+export async function requireUser(role?: Role): Promise<User> {
     const user = await auth()
     if (!user) redirect('/login')
-
-    if (minRank && RANK_LEVEL[user.rank] < RANK_LEVEL[minRank]) {
-        redirect(homeFor(user.rank))
-    }
-
+    if (role && user.role !== role) redirect(homeFor(user.role))
     return user
-}
-
-/**
- * Where "/" means for a given rank.
- *
- * Each level of the authority has a different job, so each gets a different
- * landing screen rather than one page with five modes inside it.
- */
-export function homeFor(rank: Rank): string {
-    switch (rank) {
-        case 'CITIZEN':
-            return '/dashboard'
-        case 'SECTION_OFFICER':
-            return '/officer/desk'
-        default:
-            return '/admin/dashboard'
-    }
 }

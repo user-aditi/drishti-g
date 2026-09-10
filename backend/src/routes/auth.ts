@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { Rank } from '@prisma/client'
+import { Role } from '@prisma/client'
 import { z } from 'zod'
 import { REFRESH_COOKIE, hashPassword, signToken, verifyPassword, verifyToken } from '../lib/auth.js'
 import { clearAuthCookies, setAuthCookies } from '../lib/cookies.js'
@@ -15,9 +15,10 @@ export const authRouter: Router = Router()
 const registerSchema = z.object({
   email: z.string().email('Enter a valid email address').transform((e) => e.toLowerCase()),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  fullName: z.string().min(2, 'Enter your full name').max(128),
+  name: z.string().min(2, 'Enter your name').max(128),
   phone: z.string().max(20).optional(),
-  homeUnitId: z.number().int().positive().nullable().optional(),
+  /** The board the person lives in. Pre-fills intake; it is not an authority scope. */
+  orgUnitId: z.number().int().positive().nullable().optional(),
 })
 
 const loginSchema = z.object({
@@ -25,17 +26,11 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Enter your password'),
 })
 
-const USER_INCLUDE = {
-  homeSector: true,
-  postings: {
-    where: { endedAt: null },
-    include: { department: true, zone: true, circle: true, sector: true },
-  },
-} as const
+const USER_INCLUDE = { agency: true, orgUnit: true } as const
 
-function tokensFor(user: { id: number; rank: Rank }) {
+function tokensFor(user: { id: number; role: Role }) {
   return {
-    accessToken: signToken(user.id, 'access', user.rank),
+    accessToken: signToken(user.id, 'access', user.role),
     refreshToken: signToken(user.id, 'refresh'),
   }
 }
@@ -43,8 +38,9 @@ function tokensFor(user: { id: number; rank: Rank }) {
 /**
  * Public self-registration. Always creates a citizen.
  *
- * Officials and admins are provisioned by an admin through /users — otherwise
- * anyone could sign themselves up with elevated access.
+ * Agent accounts are seeded, never self-registered — otherwise anyone could sign
+ * themselves into an agency queue. Layer 0 has only these two roles, because NYC
+ * publishes no case-worker identity to model anything finer on.
  */
 authRouter.post(
   '/register',
@@ -55,24 +51,28 @@ authRouter.post(
     const existing = await prisma.user.findUnique({ where: { email: body.email } })
     if (existing) throw conflict('An account with this email already exists')
 
+    const passwordHash = await hashPassword(body.password)
     const user = await prisma.$transaction(async (tx) => {
       const created = await tx.user.create({
         data: {
           email: body.email,
-          hashedPassword: await hashPassword(body.password),
-          fullName: body.fullName,
+          passwordHash,
+          name: body.name,
           phone: body.phone ?? null,
-          rank: Rank.CITIZEN,
-          homeUnitId: body.homeUnitId ?? null,
+          role: Role.CITIZEN,
+          orgUnitId: body.orgUnitId ?? null,
+          // A real person signed up. Only the seeded staff accounts stand in for
+          // a role NYC does not record.
+          isSynthetic: false,
         },
       })
       await audit.record(tx, {
         action: 'user.registered',
         entityType: 'user',
         entityId: created.id,
-        payload: { email: created.email, rank: created.rank },
+        payload: { email: created.email, role: created.role },
         actorId: created.id,
-        actorLabel: created.fullName,
+        actorLabel: created.name,
       })
       return tx.user.findUniqueOrThrow({ where: { id: created.id }, include: USER_INCLUDE })
     })
@@ -92,7 +92,7 @@ authRouter.post(
     const user = await prisma.user.findUnique({ where: { email }, include: USER_INCLUDE })
     // One message for both "no such user" and "wrong password", so this endpoint
     // cannot be used to discover which emails are registered.
-    if (!user || !(await verifyPassword(password, user.hashedPassword))) {
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
       throw unauthorized('Incorrect email or password')
     }
     if (!user.isActive) throw unauthorized('This account has been deactivated')
@@ -104,7 +104,7 @@ authRouter.post(
         entityId: user.id,
         payload: { email: user.email },
         actorId: user.id,
-        actorLabel: user.fullName,
+        actorLabel: user.name,
       }),
     )
 
@@ -135,7 +135,7 @@ authRouter.post(
       throw unauthorized('Your session has expired — please sign in again')
     }
 
-    const accessToken = signToken(user.id, 'access', user.rank)
+    const accessToken = signToken(user.id, 'access', user.role)
     setAuthCookies(res, accessToken)
     res.json({ accessToken })
   }),

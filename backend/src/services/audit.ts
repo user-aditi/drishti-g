@@ -66,7 +66,13 @@ export interface RecordInput {
   payload?: Record<string, unknown>
   actorId?: number | null
   actorLabel?: string | null
-  source?: 'api' | 'gcce' | 'grie' | 'system'
+  /**
+   * Who acted. `import` is the one that matters: an entry marked so records
+   * that a row arrived from NYC Open Data, and never that this system did
+   * anything to it. Keeping it distinct from `api` is what lets a reader tell
+   * our actions from New York's history — the whole basis of the chain's value.
+   */
+  source?: 'api' | 'import' | 'system'
 }
 
 /**

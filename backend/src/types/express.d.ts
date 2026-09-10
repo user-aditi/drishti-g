@@ -1,33 +1,26 @@
-import type { JurisdictionLevel, Rank, Trade } from '@prisma/client'
+import type { Role } from '@prisma/client'
 
-export interface AuthPosting {
-  id: number
-  departmentId: number | null
-  rank: Rank
-  level: JurisdictionLevel
-  zoneId: number | null
-  circleId: number | null
-  sectorId: number | null
-  designationTitle: string | null
-  trade: Trade | null
-}
-
-/** The authenticated principal, attached by the auth middleware. */
+/**
+ * The authenticated principal, attached by the auth middleware.
+ *
+ * Flat, and deliberately so. The previous system carried a list of postings
+ * here because authority was a position in a chain of command; in Layer 0 an
+ * agent is accountable *as their agency* and nothing finer, which is exactly
+ * how NYC 311 works. Individual ownership arrives with Layer 1 and will need a
+ * posting again — but inventing it now would contaminate the baseline every
+ * later layer is measured against.
+ */
 export interface AuthUser {
   id: number
   email: string
-  fullName: string
-  rank: Rank
-  homeSectorId: number | null
-  /** Flattened from the primary posting for convenience. */
-  departmentId: number | null
-  sectorId: number | null
-  circleId: number | null
-  zoneId: number | null
-  designationTitle: string | null
-  trade: Trade | null
-  /** Every active posting — the source of truth for jurisdiction. */
-  postings: AuthPosting[]
+  name: string
+  role: Role
+  /** The agency an agent works for. Null for citizens. */
+  agencyId: number | null
+  /** A citizen's home board. Used to pre-fill intake, never to scope authority. */
+  orgUnitId: number | null
+  /** True for accounts standing in for a role NYC does not record. */
+  isSynthetic: boolean
 }
 
 declare global {

@@ -1,330 +1,342 @@
 @import "tailwindcss";
 
-@plugin "tailwindcss-animate";
+/**
+ * Layer 0 design tokens.
+ *
+ * One palette, declared once on bare `:root`, consumed everywhere through
+ * var(--…). Nothing in the app may reach for a raw Tailwind colour
+ * (bg-red-50, text-slate-700): those cannot follow the theme, and across a
+ * dozen screens they drift into six different reds.
+ *
+ * The light palette is complete on `:root`. The dark blocks below redefine
+ * only what changes — a colour that exists solely inside a media query has no
+ * value when that query does not match, and the page renders half-painted.
+ *
+ * Theme resolution has three states, and both dark blocks are needed to cover
+ * them: the media query handles "system", `[data-theme="dark"]` handles an
+ * explicit choice, and the `:not([data-theme="light"])` guard stops the media
+ * query from overriding someone who explicitly asked for light on a dark
+ * machine.
+ */
+:root {
+    /* ---- Institutional anchor ------------------------------------------- *
+     * This blue is the frame, not a state. It carries the header rule, the
+     * primary action and links — and it is never a status, because the moment
+     * "brand" means "in progress" a reader cannot tell chrome from data. */
+    --brand: #12467F;
+    --brand-soft: #E4EDF7;
+    --brand-ink: #0E3763;
 
-@custom-variant dark (&:is(.dark *));
+    /* ---- Status families ------------------------------------------------ *
+     * Three states, because a service request only has three that a reader
+     * acts on: it is finished, it is waiting, or it has blown its deadline.
+     * Everything else is neutral ink. */
+    --done: #12694A;
+    --done-soft: #E0F0E9;
+    --wait: #8A5600;
+    --wait-soft: #FAEEDA;
+    --stop: #A32036;
+    --stop-soft: #FBE6EA;
+
+    /* Reserved for the layers this project adds on top of NYC's own data.
+       Nothing in Layer 0 may use it: if a reader ever sees violet, it means
+       they are looking at something the City did not publish. */
+    --new: #5B3E9B;
+    --new-soft: #EDE7F8;
+
+    /* ---- Surfaces -------------------------------------------------------- *
+     * Three depths only: the ground everything sits on, the surface a panel
+     * or table draws on, and a sunk tone for table headers and inset blocks.
+     * Any more and nothing reads as being on top of anything. */
+    --ground: #F6F7F9;
+    --surface: #FFFFFF;
+    --sunk: #EDEFF3;
+    --line: #DDE1E8;
+    --line-strong: #BFC5D1;
+
+    /* ---- Text ------------------------------------------------------------ *
+     * Exactly three levels. A fourth grey always turns out to be a third-level
+     * grey someone could not find, and it fails contrast on the way. */
+    --ink: #12161D;
+    --ink-mid: #3D4553;
+    --ink-soft: #6B7383;
+
+    /* Borders carry structure here, so there is one radius and almost no
+       shadow. The shadow token exists for things that genuinely float above
+       the page — a dropdown, a popover — and nothing else. */
+    --radius: 5px;
+    --lift: 0 6px 16px -6px rgb(18 22 29 / 0.18), 0 2px 4px -2px rgb(18 22 29 / 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --brand: #7FB2E8;
+        --brand-soft: #132840;
+        --brand-ink: #A9CCF2;
+
+        --done: #4FBF92;
+        --done-soft: #0F2A20;
+        --wait: #E0A44E;
+        --wait-soft: #2C2113;
+        --stop: #F0788F;
+        --stop-soft: #2E151B;
+
+        --new: #B7A0F0;
+        --new-soft: #211A38;
+
+        --ground: #0C0F14;
+        --surface: #141922;
+        --sunk: #1A202B;
+        --line: #262E3B;
+        --line-strong: #3A4453;
+
+        --ink: #E8ECF2;
+        --ink-mid: #AEB7C6;
+        --ink-soft: #7E8797;
+
+        --lift: 0 6px 16px -6px rgb(0 0 0 / 0.6), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+    }
+}
+
+:root[data-theme="dark"] {
+    --brand: #7FB2E8;
+    --brand-soft: #132840;
+    --brand-ink: #A9CCF2;
+
+    --done: #4FBF92;
+    --done-soft: #0F2A20;
+    --wait: #E0A44E;
+    --wait-soft: #2C2113;
+    --stop: #F0788F;
+    --stop-soft: #2E151B;
+
+    --new: #B7A0F0;
+    --new-soft: #211A38;
+
+    --ground: #0C0F14;
+    --surface: #141922;
+    --sunk: #1A202B;
+    --line: #262E3B;
+    --line-strong: #3A4453;
+
+    --ink: #E8ECF2;
+    --ink-mid: #AEB7C6;
+    --ink-soft: #7E8797;
+
+    --lift: 0 6px 16px -6px rgb(0 0 0 / 0.6), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+}
 
 /**
- * DRISHTI-G design tokens.
- *
- * One palette, defined once, consumed everywhere through var(--…). Nothing in
- * the app should reach for a raw Tailwind colour (bg-red-50, text-slate-700):
- * those cannot follow the theme into dark mode, and across forty screens they
- * drift apart into six different reds. Every colour a component needs has a
- * token here, including the banner and badge families further down.
- *
- * `.force-light` pins a subtree to the light palette regardless of the theme on
- * <html>. It exists for the street worker's page: that screen is read one-handed
- * in Noida sun, where a dark UI is genuinely harder to see, and its own phone's
- * night setting should not decide that for them. It works because these tokens
- * are re-declared on a descendant, and the nearest ancestor's value wins.
+ * The tokens above, exposed to Tailwind so `bg-surface` and `text-ink-soft`
+ * work as utilities. Doing it here rather than writing bg-[color:var(--…)] at
+ * every call site is the difference between a palette and a convention.
  */
-:root,
-.force-light {
-    /* ---- Brand ---------------------------------------------------------- *
-     * Indigo, not teal. It reads as public infrastructure rather than as a
-     * health app, and it holds its own next to the risk reds and ambers that
-     * sit beside it on almost every screen in this product. */
-    --primary: #4338CA;
-    --primary-light: #4F46E5;
-    --primary-dark: #3730A3;
-    --primary-foreground: #FFFFFF;
-    /* A wash of the brand, for selected rows and quiet highlights. */
-    --primary-wash: #EEF0FE;
-
-    --secondary: #0284C7;
-    --secondary-foreground: #FFFFFF;
-
-    /* ---- Surfaces ------------------------------------------------------- *
-     * Three levels only: the canvas behind everything, the panel that sits on
-     * it, and a sunken tone for table headers and inset blocks. Any more and
-     * nothing reads as being on top of anything. */
-    --background: #F5F6FA;
-    --foreground: #101828;
-    --card: #FFFFFF;
-    --card-foreground: #101828;
-    --popover: #FFFFFF;
-    --popover-foreground: #101828;
-    --sunken: #F8F9FC;
-    --muted: #F2F4F8;
-    --muted-foreground: #667085;
-    --subtle-foreground: #98A2B3;
-    --accent: #EEF0FE;
-    --accent-foreground: #3730A3;
-    --border: #E4E7EC;
-    --border-strong: #D0D5DD;
-    --input: #D0D5DD;
-    --ring: #4F46E5;
-
-    /* ---- Elevation ------------------------------------------------------ *
-     * Softer and wider than a default shadow: this direction wants surfaces to
-     * lift off the canvas rather than to be outlined against it. */
-    --shadow-xs: 0 1px 2px 0 rgb(16 24 40 / 0.04);
-    --shadow-sm: 0 1px 3px 0 rgb(16 24 40 / 0.06), 0 1px 2px -1px rgb(16 24 40 / 0.04);
-    --shadow-md: 0 4px 12px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.04);
-    --shadow-lg: 0 12px 28px -6px rgb(16 24 40 / 0.12), 0 4px 8px -4px rgb(16 24 40 / 0.06);
-
-    /* ---- Semantic families ---------------------------------------------- *
-     * Each state gets four tokens: a solid, a tint to fill a banner, a border
-     * for that banner, and a foreground legible on the tint. Banners, badges,
-     * row tints and callouts all draw from these, which is why an overdue row
-     * and an overdue badge are the same red on every screen. */
-    --success: #059669;
-    --success-bg: #ECFDF5;
-    --success-border: #A7F3D0;
-    --success-fg: #065F46;
-
-    --warning: #D97706;
-    --warning-bg: #FFFBEB;
-    --warning-border: #FDE68A;
-    --warning-fg: #92400E;
-
-    --error: #DC2626;
-    --error-bg: #FEF2F2;
-    --error-border: #FECACA;
-    --error-fg: #991B1B;
-
-    --info: #0284C7;
-    --info-bg: #F0F9FF;
-    --info-border: #BAE6FD;
-    --info-fg: #075985;
-
-    --escalate: #7C3AED;
-    --escalate-bg: #F5F3FF;
-    --escalate-border: #DDD6FE;
-    --escalate-fg: #5B21B6;
-
-    --neutral-bg: #F2F4F8;
-    --neutral-border: #E4E7EC;
-    --neutral-fg: #475467;
-
-    /* ---- GRIE risk bands ------------------------------------------------ *
-     * These map 1:1 to the RiskBand enum in the backend. */
-    --risk-low: #059669;
-    --risk-moderate: #CA8A04;
-    --risk-high: #EA580C;
-    --risk-severe: #DC2626;
-
-    /* Moderate and High must never look alike — the whole point of the radar is
-       that a supervisor can tell the two apart down a column at a glance. */
-    --risk-moderate-bg: #FEFCE8;
-    --risk-moderate-fg: #854D0E;
-    --risk-high-bg: #FFF4ED;
-    --risk-high-fg: #9A3412;
-
-    /* ---- Complaint status ----------------------------------------------- *
-     * One colour per state, used by badges, the funnel and the map pins. */
-    --status-submitted: #98A2B3;
-    --status-routed: #0EA5E9;
-    --status-assigned: #4F46E5;
-    --status-in-progress: #F59E0B;
-    --status-awaiting: #8B5CF6;
-    --status-resolved: #10B981;
-    --status-closed: #667085;
-    --status-rejected: #EF4444;
-
-    /* ---- The chain of command, light to dark by seniority ---------------- */
-    --rank-worker: #14B8A6;
-    --rank-section: #4F46E5;
-    --rank-circle: #6366F1;
-    --rank-zonal: #8B5CF6;
-    --rank-hod: #A855F7;
-    --rank-ceo: #D97706;
-
-    /* ---- Navigation ------------------------------------------------------ *
-     * A deep indigo rail rather than a neutral slate one, so the brand lives in
-     * the chrome and the content area can stay almost colourless. */
-    --sidebar: #1E1B4B;
-    --sidebar-raised: #272463;
-    --sidebar-foreground: #C7D2FE;
-    --sidebar-strong: #FFFFFF;
-    --sidebar-muted: #8E8ECB;
-    --sidebar-accent: #4338CA;
-    --sidebar-border: rgb(199 210 254 / 0.14);
-
-    /* Generous by design. This direction buys legibility with whitespace, and
-       a 10px corner is the difference between a form and a piece of software. */
-    --radius: 0.625rem;
-}
-
-.dark {
-    --primary: #818CF8;
-    --primary-light: #A5B4FC;
-    --primary-dark: #6366F1;
-    --primary-foreground: #1E1B4B;
-    --primary-wash: #262A55;
-
-    --background: #0B0F1A;
-    --foreground: #E6E9F0;
-    --card: #131829;
-    --card-foreground: #E6E9F0;
-    --popover: #161C30;
-    --popover-foreground: #E6E9F0;
-    --sunken: #0F1424;
-    --muted: #1A2033;
-    --muted-foreground: #98A2B3;
-    --subtle-foreground: #6B7688;
-    --accent: #262A55;
-    --accent-foreground: #C7D2FE;
-    --border: #232A3D;
-    --border-strong: #313A52;
-    --input: #313A52;
-    --ring: #818CF8;
-
-    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.4);
-    --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.45);
-    --shadow-lg: 0 12px 28px -6px rgb(0 0 0 / 0.55);
-
-    --success-bg: #052E22;
-    --success-border: #10603F;
-    --success-fg: #6EE7B7;
-
-    --warning-bg: #2B1D05;
-    --warning-border: #7C4A0B;
-    --warning-fg: #FCD34D;
-
-    --error-bg: #2C0F10;
-    --error-border: #7F1D1D;
-    --error-fg: #FCA5A5;
-
-    --info-bg: #05253A;
-    --info-border: #0C4A6E;
-    --info-fg: #7DD3FC;
-
-    --escalate-bg: #1F1442;
-    --escalate-border: #4C1D95;
-    --escalate-fg: #C4B5FD;
-
-    --risk-moderate-bg: #2A2205;
-    --risk-moderate-fg: #FDE047;
-    --risk-high-bg: #331608;
-    --risk-high-fg: #FDBA74;
-
-    --neutral-bg: #1A2033;
-    --neutral-border: #232A3D;
-    --neutral-fg: #C0C7D4;
-
-    --sidebar: #0A0E1A;
-    --sidebar-raised: #151B2E;
-    --sidebar-foreground: #A5B0C4;
-    --sidebar-strong: #F2F5FA;
-    --sidebar-muted: #6B7688;
-    --sidebar-accent: #3730A3;
-    --sidebar-border: rgb(148 163 184 / 0.12);
-}
-
 @theme inline {
-    --color-background: var(--background);
-    --color-foreground: var(--foreground);
-    --color-card: var(--card);
-    --color-card-foreground: var(--card-foreground);
-    --color-popover: var(--popover);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-sunken: var(--sunken);
-    --color-primary: var(--primary);
-    --color-primary-light: var(--primary-light);
-    --color-primary-dark: var(--primary-dark);
-    --color-primary-wash: var(--primary-wash);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-secondary: var(--secondary);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-muted: var(--muted);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-subtle-foreground: var(--subtle-foreground);
-    --color-accent: var(--accent);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-border: var(--border);
-    --color-border-strong: var(--border-strong);
-    --color-input: var(--input);
-    --color-ring: var(--ring);
+    --color-brand: var(--brand);
+    --color-brand-soft: var(--brand-soft);
+    --color-brand-ink: var(--brand-ink);
 
-    --color-success: var(--success);
-    --color-warning: var(--warning);
-    --color-error: var(--error);
-    --color-info: var(--info);
-    --color-escalate: var(--escalate);
+    --color-done: var(--done);
+    --color-done-soft: var(--done-soft);
+    --color-wait: var(--wait);
+    --color-wait-soft: var(--wait-soft);
+    --color-stop: var(--stop);
+    --color-stop-soft: var(--stop-soft);
+    --color-new: var(--new);
+    --color-new-soft: var(--new-soft);
 
-    --color-risk-low: var(--risk-low);
-    --color-risk-moderate: var(--risk-moderate);
-    --color-risk-high: var(--risk-high);
-    --color-risk-severe: var(--risk-severe);
+    --color-ground: var(--ground);
+    --color-surface: var(--surface);
+    --color-sunk: var(--sunk);
+    --color-line: var(--line);
+    --color-line-strong: var(--line-strong);
 
-    --color-sidebar: var(--sidebar);
-    --color-sidebar-raised: var(--sidebar-raised);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar-strong: var(--sidebar-strong);
-    --color-sidebar-muted: var(--sidebar-muted);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-border: var(--sidebar-border);
+    --color-ink: var(--ink);
+    --color-ink-mid: var(--ink-mid);
+    --color-ink-soft: var(--ink-soft);
 
-    --radius-sm: calc(var(--radius) - 4px);
-    --radius-md: calc(var(--radius) - 2px);
+    /* One radius, aliased across every name Tailwind offers, so no utility can
+       smuggle in a second corner size. */
+    --radius-xs: var(--radius);
+    --radius-sm: var(--radius);
+    --radius-md: var(--radius);
     --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) + 4px);
-    --radius-2xl: calc(var(--radius) + 8px);
+    --radius-xl: var(--radius);
+    --radius-2xl: var(--radius);
 
-    --font-sans: var(--font-sans-public), "Noto Sans Devanagari", system-ui, sans-serif;
-    --font-display: var(--font-display-archivo), var(--font-sans-public), system-ui, sans-serif;
-    --font-mono: var(--font-mono-plex), ui-monospace, monospace;
-}
+    /* 12 / 13.5 / 14.5 / 16 / 19 / 24 / 29. Seven sizes is a scale; anything
+       more is a pile of one-offs. Body is 14.5 at 1.6, which is what a dense
+       register can be read in for an hour. */
+    --text-xs: 0.75rem;
+    --text-xs--line-height: 1.45;
+    --text-sm: 0.84375rem;
+    --text-sm--line-height: 1.5;
+    --text-base: 0.90625rem;
+    --text-base--line-height: 1.6;
+    --text-lg: 1rem;
+    --text-lg--line-height: 1.5;
+    --text-xl: 1.1875rem;
+    --text-xl--line-height: 1.4;
+    --text-2xl: 1.5rem;
+    --text-2xl--line-height: 1.3;
+    --text-3xl: 1.8125rem;
+    --text-3xl--line-height: 1.2;
 
-* {
-    border-color: var(--border);
+    /* Public Sans was commissioned for US government interfaces and is the
+       running text. IBM Plex Mono is reserved for the things that must line up
+       in a column or be read aloud down a phone: SR numbers, timestamps,
+       counts. */
+    --font-sans: var(--font-public-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+
+    /* The 4px spacing step. Every gap in the app is a multiple of it. */
+    --spacing: 4px;
 }
 
 html {
     color-scheme: light;
 }
 
-html.dark {
+@media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) {
+        color-scheme: dark;
+    }
+}
+
+html[data-theme="dark"] {
     color-scheme: dark;
 }
 
 body {
-    background-color: var(--background);
-    color: var(--foreground);
+    background-color: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 0.90625rem;
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
 }
 
-/* Headings carry the display face; running text stays on Public Sans, which is
-   what an officer actually reads a queue in. */
+/* The body never scrolls sideways. Anything wider than the viewport — a
+   register with eight columns, a map legend — scrolls inside its own box, so
+   the page's own chrome stays where the reader left it. */
+html,
+body {
+    overflow-x: hidden;
+}
+
 h1,
 h2,
 h3 {
-    font-family: var(--font-display);
-    letter-spacing: -0.018em;
+    font-weight: 600;
+    letter-spacing: -0.012em;
     text-wrap: balance;
 }
 
-/* Tabular figures keep dashboard numbers from jittering as they update. */
+/**
+ * Every identifier in this system is monospaced and tabular.
+ *
+ * An SR number is read aloud, typed into a lookup box, and compared down a
+ * column of three hundred others. All three of those get worse in a
+ * proportional face, where 1 and 7 are different widths and nothing aligns.
+ */
+.mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    letter-spacing: -0.01em;
+}
+
+/* Numbers in running sans text that still need to line up down a column. */
 .tnum {
     font-variant-numeric: tabular-nums;
 }
 
-/* A column label: small, spaced, quiet. Used above tables and stat groups so
+/* Running prose stops at 74 characters. Past that the eye loses the line it
+   was on coming back from the right margin. */
+.prose-measure {
+    max-width: 74ch;
+}
+
+/* A column label: small, spaced, quiet. Sits above tables and figure groups so
    the eye finds structure before it finds numbers. */
 .label-cap {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     font-weight: 500;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--muted-foreground);
+    color: var(--ink-soft);
 }
 
-/* The one surface treatment. Anything that is a panel uses this, so every
-   surface in the app lifts off the canvas by exactly the same amount. */
+/* The one panel treatment: a line, not a shadow. */
 .panel {
-    background-color: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow: var(--shadow-sm);
+    background-color: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
 }
 
+/* A register is a table that has to survive 350,000 rows: the header stays put
+   while the body scrolls, and the whole thing scrolls horizontally inside its
+   own frame rather than pushing the page sideways. */
+.register-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+}
+
+/*
+ * The focus ring is not negotiable.
+ *
+ * Every register here is meant to be worked entirely from the keyboard — tab
+ * through the filters, arrow down the rows, enter to open. That is unusable
+ * without a ring you can actually see, and a government system that cannot be
+ * operated without a mouse has failed the people most likely to need it.
+ */
 :focus-visible {
-    outline: 2px solid var(--ring);
+    outline: 2px solid var(--brand);
     outline-offset: 2px;
+    border-radius: var(--radius);
+}
+
+.skip-link {
+    position: absolute;
+    top: -64px;
+    left: 0;
+    z-index: 100;
+    padding: 8px 16px;
+    background: var(--brand);
+    color: var(--surface);
+    border-radius: 0 0 var(--radius) 0;
+    transition: top 0.15s;
+}
+
+.skip-link:focus {
+    top: 0;
+}
+
+/* Scrollbars that do not fight the palette they sit in. */
+* {
+    scrollbar-color: var(--line-strong) transparent;
+    scrollbar-width: thin;
+}
+
+/* Leaflet paints its own container; keep it inside our corner and our face. */
+.leaflet-container {
+    height: 100%;
+    width: 100%;
+    font-family: var(--font-sans);
+    background: var(--sunk);
+}
+
+.leaflet-container a {
+    color: var(--brand);
+}
+
+/* Attribution is a legal requirement of the tiles, so it has to stay readable
+   in both themes rather than inheriting Leaflet's white-on-white default. */
+.leaflet-control-attribution {
+    background: var(--surface) !important;
+    color: var(--ink-soft) !important;
+    font-size: 11px;
 }
 
 /* Motion is decoration here; anyone who has asked for less should get none. */
@@ -339,39 +351,48 @@ h3 {
     }
 }
 
-.skip-link {
-    position: absolute;
-    top: -48px;
-    left: 0;
-    z-index: 100;
-    background: var(--primary);
-    color: var(--primary-foreground);
-    padding: 8px 16px;
-    border-radius: 0 0 var(--radius) 0;
-    transition: top 0.2s;
-}
-
-.skip-link:focus {
-    top: 0;
-}
-
-/* Scrollbars that do not fight the palette they sit in. */
-* {
-    scrollbar-color: var(--border-strong) transparent;
-    scrollbar-width: thin;
-}
-
-/* Leaflet renders its own container; keep it inside our rounded corners. */
-.leaflet-container {
-    height: 100%;
-    width: 100%;
-    font-family: inherit;
-    border-radius: var(--radius-lg);
-}
-
-/* A sweep for skeleton placeholders. */
-@keyframes shimmer {
-    100% {
-        transform: translateX(100%);
+@keyframes pulse-soft {
+    50% {
+        opacity: 0.45;
     }
+}
+
+/* A placeholder for a row that has not arrived. Deliberately a plain block:
+   a shimmer that mimics content is a lie about how far along the load is. */
+.loading-block {
+    background-color: var(--sunk);
+    border-radius: var(--radius);
+    animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+/* ---- Map clusters ------------------------------------------------------- *
+ * A marker is a count in a grid cell, not a pin on a place, so it is drawn as
+ * a weighted disc carrying its number rather than as a teardrop that would
+ * claim a location it does not have.
+ *
+ * The disc scales by area rather than radius — a circle sized by radius reads
+ * as the square of its value, and a cell holding a hundred requests would
+ * swallow half the borough. Brand blue, not a status colour: a cluster mixes
+ * open, overdue and pending requests together, so colouring it by state would
+ * be picking one of them to speak for the rest. */
+.cluster-icon {
+    background: none;
+    border: 0;
+}
+
+.cluster-dot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--brand) 82%, transparent);
+    border: 2px solid var(--surface);
+    color: #fff;
+    font-family: var(--font-mono), ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.28);
 }

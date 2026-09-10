@@ -28,12 +28,19 @@ const schema = z.object({
   ACCESS_TOKEN_TTL: z.string().default('1h'),
   REFRESH_TOKEN_TTL: z.string().default('14d'),
 
-  CORS_ORIGINS: z.string().default('http://localhost:5173'),
-  UPLOAD_DIR: z.string().default('uploads'),
+  CORS_ORIGINS: z.string().default('http://localhost:3000'),
   PUBLIC_URL: z.string().default('http://localhost:4000'),
-  /// Where the browser app lives. Work-order QR codes point here, not at the
-  /// API — a worker scanning a slip needs the upload page, not JSON.
+  /// Where the browser app lives.
   APP_URL: z.string().default('http://localhost:3000'),
+
+  /*
+   * Where the system believes it is standing in time.
+   *
+   * Not validated here on purpose — `systemClock.ts` owns it, reads
+   * `process.env` directly, and is used by scripts that run without a JWT
+   * secret or an API to serve. This module exits the process when those are
+   * missing, so the importer could not import it.
+   */
 })
 
 const parsed = schema.safeParse(process.env)

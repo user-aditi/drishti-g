@@ -1,195 +1,163 @@
 /**
- * A small authority, built from nothing before each test file.
+ * A small borough, built from nothing before each test file.
  *
- * Deliberately not the seed: the seed is a demo, and a test that depends on it
- * fails for reasons that have nothing to do with the code. This builds the
- * smallest tree that can still express every rule worth testing — two zones so
- * a sibling can be refused, two sectors under one of them so a rollup has
- * something to sum, and two departments operating at different depths.
+ * Deliberately not the seed, and definitely not the imported corpus: the seed is
+ * a demo and the corpus is 355,430 rows, so a test that depended on either would
+ * fail for reasons that have nothing to do with the code under test. This builds
+ * the smallest structure that can still express every Layer 0 rule worth
+ * testing — two boards so a filter has something to exclude, two agencies so an
+ * agent can be refused another agency's request, and one type per agency so
+ * routing has a decision to make.
  *
- *   City (depth 0)
- *   ├── Zone A (depth 1)
- *   │   ├── Sector 1 (depth 2)
- *   │   └── Sector 2 (depth 2)
- *   └── Zone B (depth 1)
- *       └── Sector 3 (depth 2)
+ *   Brooklyn (depth 0)
+ *   ├── Community Board 1 (depth 1)
+ *   └── Community Board 2 (depth 1)
  */
-import { PrismaClient, Role, Rank, DepartmentStatus } from '@prisma/client'
+import { PrismaClient, Role, SlaSource } from '@prisma/client'
 
 export const prisma = new PrismaClient()
 
 export interface Fixture {
-  city: number
-  zoneA: number
-  zoneB: number
-  sector1: number
-  sector2: number
-  sector3: number
-  /** Runs the full depth of the tree: City -> Zone -> Sector. */
-  deepDept: number
-  /** Stops at depth 1: City -> Zone. Its ground floor is a zone. */
-  shallowDept: number
-  cityOfficer: number
-  zoneAOfficer: number
-  sector1Officer: number
+  borough: number
+  board1: number
+  board2: number
+  dot: number
+  dsny: number
+  /** Street Condition, DOT, 110.3h SLA. */
+  streetType: number
+  /** Missed Collection, DSNY, 159.3h SLA. */
+  sanitationType: number
+  streetDescriptor: number
+  dotAgent: number
+  dsnyAgent: number
   citizen: number
 }
 
-/** Wipe every table this suite touches, children first. */
+/**
+ * Wipe every table this suite touches, children first.
+ *
+ * `auditEvent` goes before `user` and that order is not cosmetic: the actor
+ * relation is `onDelete: Restrict` precisely so a user deletion can never
+ * silently rewrite hashed audit content, so deleting users first would throw.
+ */
 export async function reset() {
   await prisma.$transaction([
-    prisma.escalation.deleteMany(),
-    prisma.complaintStatusHistory.deleteMany(),
-    prisma.complaintSupport.deleteMany(),
-    prisma.notification.deleteMany(),
+    prisma.requestStatusHistory.deleteMany(),
     prisma.auditEvent.deleteMany(),
-    prisma.complaint.deleteMany(),
-    prisma.grievanceCluster.deleteMany(),
-    prisma.crew.deleteMany(),
-    prisma.posting.deleteMany(),
-    prisma.departmentLayer.deleteMany(),
-    prisma.complaintCategory.deleteMany(),
+    prisma.serviceRequest.deleteMany(),
+    prisma.requestDescriptor.deleteMany(),
+    prisma.requestType.deleteMany(),
     prisma.user.deleteMany(),
     prisma.orgUnit.deleteMany(),
-    prisma.department.deleteMany(),
+    prisma.agency.deleteMany(),
   ])
 }
 
-async function unit(
-  code: string,
-  name: string,
-  kindLabel: string,
-  parent: { id: number; depth: number; path: string } | null,
-) {
+async function unit(code: string, name: string, kindLabel: string, parentId: number | null) {
+  const parent = parentId ? await prisma.orgUnit.findUniqueOrThrow({ where: { id: parentId } }) : null
   const created = await prisma.orgUnit.create({
     data: {
       code,
       name,
       kindLabel,
+      parentId,
       depth: parent ? parent.depth + 1 : 0,
-      path: 'pending',
-      parentId: parent?.id ?? null,
+      path: '',
       isLeaf: true,
-      centroidLat: 28.5 + Math.random() * 0.1,
-      centroidLon: 77.3 + Math.random() * 0.1,
     },
   })
-  const path = parent ? `${parent.path}${created.id}/` : `/${created.id}/`
-  const withPath = await prisma.orgUnit.update({ where: { id: created.id }, data: { path } })
+  // The materialised path can only be written once the row has an id, and the
+  // parent stops being a leaf the moment it acquires one.
+  const path = `${parent ? parent.path : '/'}${created.id}/`
+  await prisma.orgUnit.update({ where: { id: created.id }, data: { path } })
   if (parent) await prisma.orgUnit.update({ where: { id: parent.id }, data: { isLeaf: false } })
-  return withPath
+  return created.id
 }
 
-async function officer(email: string, name: string, orgUnitId: number, departmentId: number) {
-  const user = await prisma.user.create({
-    data: {
-      email,
-      fullName: name,
-      hashedPassword: 'test-not-a-real-hash',
-      role: Role.OFFICER,
-      rank: Rank.SECTION_OFFICER,
-    },
-  })
-  await prisma.posting.create({
-    data: {
-      userId: user.id,
-      departmentId,
-      orgUnitId,
-      rank: Rank.SECTION_OFFICER,
-      level: 'SECTOR',
-      designationTitle: name,
-    },
-  })
-  return user.id
-}
+const SLA_NOTE =
+  'Derived: 75th percentile of observed citywide closure time for this type. ' +
+  'NYC publishes no due date for this complaint type.'
 
 export async function build(): Promise<Fixture> {
-  await reset()
+  const borough = await unit('BK', 'Brooklyn', 'Borough', null)
+  const board1 = await unit('BK-01', 'Community Board 1', 'Community Board', borough)
+  const board2 = await unit('BK-02', 'Community Board 2', 'Community Board', borough)
 
-  const city = await unit('CITY', 'Testville', 'City', null)
-  const zoneA = await unit('ZA', 'Zone A', 'Zone', city)
-  const zoneB = await unit('ZB', 'Zone B', 'Zone', city)
-  const sector1 = await unit('S1', 'Sector 1', 'Sector', zoneA)
-  const sector2 = await unit('S2', 'Sector 2', 'Sector', zoneA)
-  const sector3 = await unit('S3', 'Sector 3', 'Sector', zoneB)
-
-  const deepDept = await prisma.department.create({
-    data: { code: 'DEEP', name: 'Deep Department', status: DepartmentStatus.ACTIVE },
+  const dot = await prisma.agency.create({
+    data: { code: 'DOT', name: 'Department of Transportation' },
   })
-  const shallowDept = await prisma.department.create({
-    data: { code: 'SHALLOW', name: 'Shallow Department', status: DepartmentStatus.ACTIVE },
+  const dsny = await prisma.agency.create({
+    data: { code: 'DSNY', name: 'Department of Sanitation' },
   })
 
-  // Deep runs all three layers and dispatches from the sector.
-  await prisma.departmentLayer.createMany({
-    data: [
-      { departmentId: deepDept.id, depth: 0, name: 'City', namePlural: 'City', canDispatch: false, slaHours: 168 },
-      { departmentId: deepDept.id, depth: 1, name: 'Zone', namePlural: 'Zones', canDispatch: false, slaHours: 72 },
-      { departmentId: deepDept.id, depth: 2, name: 'Sector', namePlural: 'Sectors', canDispatch: true, slaHours: 24 },
-    ],
+  const streetType = await prisma.requestType.create({
+    data: {
+      code: 'street-condition',
+      name: 'Street Condition',
+      agencyId: dot.id,
+      slaHours: 110.3,
+      slaSource: SlaSource.DERIVED_P75,
+      slaNote: SLA_NOTE,
+    },
+  })
+  const sanitationType = await prisma.requestType.create({
+    data: {
+      code: 'missed-collection',
+      name: 'Missed Collection',
+      agencyId: dsny.id,
+      slaHours: 159.3,
+      slaSource: SlaSource.DERIVED_P75,
+      slaNote: SLA_NOTE,
+    },
   })
 
-  // Shallow stops at the zone — its ground floor is a unit that HAS children,
-  // which is exactly the case that broke dispatch once.
-  await prisma.departmentLayer.createMany({
-    data: [
-      { departmentId: shallowDept.id, depth: 0, name: 'City', namePlural: 'City', canDispatch: false, slaHours: 120 },
-      { departmentId: shallowDept.id, depth: 1, name: 'Ward', namePlural: 'Wards', canDispatch: true, slaHours: 36 },
-    ],
+  const streetDescriptor = await prisma.requestDescriptor.create({
+    data: { name: 'Pothole', requestTypeId: streetType.id },
   })
 
-  const cityOfficer = await officer('city@test.local', 'City Officer', city.id, deepDept.id)
-  const zoneAOfficer = await officer('zonea@test.local', 'Zone A Officer', zoneA.id, deepDept.id)
-  const sector1Officer = await officer('s1@test.local', 'Sector 1 Officer', sector1.id, deepDept.id)
-
+  // Every staff account here is synthetic, exactly as in the real system: NYC
+  // publishes no case-worker identity, so there is no real person to model.
+  const dotAgent = await prisma.user.create({
+    data: {
+      email: 'dot.agent@example.invalid',
+      name: 'DOT Agent',
+      passwordHash: 'test-not-a-real-hash',
+      role: Role.AGENT,
+      agencyId: dot.id,
+      isSynthetic: true,
+    },
+  })
+  const dsnyAgent = await prisma.user.create({
+    data: {
+      email: 'dsny.agent@example.invalid',
+      name: 'DSNY Agent',
+      passwordHash: 'test-not-a-real-hash',
+      role: Role.AGENT,
+      agencyId: dsny.id,
+      isSynthetic: true,
+    },
+  })
   const citizen = await prisma.user.create({
     data: {
-      email: 'resident@test.local',
-      fullName: 'Test Resident',
-      hashedPassword: 'test-not-a-real-hash',
+      email: 'citizen@example.invalid',
+      name: 'Test Citizen',
+      passwordHash: 'test-not-a-real-hash',
       role: Role.CITIZEN,
-      rank: Rank.CITIZEN,
-      homeUnitId: sector1.id,
+      orgUnitId: board1,
     },
   })
 
   return {
-    city: city.id,
-    zoneA: zoneA.id,
-    zoneB: zoneB.id,
-    sector1: sector1.id,
-    sector2: sector2.id,
-    sector3: sector3.id,
-    deepDept: deepDept.id,
-    shallowDept: shallowDept.id,
-    cityOfficer,
-    zoneAOfficer,
-    sector1Officer,
+    borough,
+    board1,
+    board2,
+    dot: dot.id,
+    dsny: dsny.id,
+    streetType: streetType.id,
+    sanitationType: sanitationType.id,
+    streetDescriptor: streetDescriptor.id,
+    dotAgent: dotAgent.id,
+    dsnyAgent: dsnyAgent.id,
     citizen: citizen.id,
   }
-}
-
-/** An open complaint sitting at a unit, optionally already past its deadline. */
-export async function complaint(
-  f: Fixture,
-  opts: { unitId: number; departmentId: number; overdueHours?: number; title?: string },
-) {
-  const due =
-    opts.overdueHours != null
-      ? new Date(Date.now() - opts.overdueHours * 3_600_000)
-      : new Date(Date.now() + 24 * 3_600_000)
-
-  return prisma.complaint.create({
-    data: {
-      referenceNo: `TEST-${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
-      title: opts.title ?? 'Broken street light',
-      description: 'Test complaint',
-      citizenId: f.citizen,
-      departmentId: opts.departmentId,
-      orgUnitId: opts.unitId,
-      status: 'ASSIGNED',
-      priority: 'MEDIUM',
-      slaDueAt: due,
-    },
-  })
 }

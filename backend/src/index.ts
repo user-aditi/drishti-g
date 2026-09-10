@@ -1,47 +1,45 @@
 import { createApp } from './app.js'
 import { env } from './config/env.js'
+import { referenceDate } from './config/systemClock.js'
 import { createLogger } from './lib/logger.js'
 import { prisma } from './lib/prisma.js'
-import { specStatus } from './services/modelSpec.js'
-import { startScheduler, stopScheduler } from './services/scheduler.js'
 
 const log = createLogger('server')
 
 const app = createApp()
 
-
 const server = app.listen(env.PORT, () => {
   log.info(`listening on http://localhost:${env.PORT}${env.API_PREFIX}`)
-  // Escalation, verification and clustering are driven by time passing rather
-  // than by anyone clicking. Started after the port is bound so a boot failure
-  // is never mistaken for a sweep failure.
-  if (env.NODE_ENV !== 'test') startScheduler()
 
   /*
-   * Say which models are loaded, at boot, once.
+   * Say which day the system thinks it is, at boot, once.
    *
-   * Every model service falls back cleanly when its spec is missing — the
-   * keyword matcher, the seeded deadline hours, no automation. That is the right
-   * behaviour and it is also the danger: the system starts, answers every
-   * request, and is quietly running its pre-Wave-3 self. Three warnings in a log
-   * nobody greps is not visibility, so the state is printed where a person
-   * starting the server will see it.
+   * Almost every date this system shows is read against a configured reference
+   * date rather than the wall clock, because the corpus is real historical data
+   * ending in December 2025. Get that wrong and nothing throws: the register
+   * simply reports every one of 350,000 requests as overdue, or none of them,
+   * and both look plausible until someone counts. The same class of mistake
+   * once produced 2,554 open complaints and zero overdue.
+   *
+   * So it is printed where a person starting the server will see it, rather
+   * than left in a config file nobody opens.
    */
   if (env.NODE_ENV !== 'test') {
-    for (const line of specStatus([
-      { name: 'classifier', file: 'classifier-spec.json', contract: 'clf/tfidf-l2/multinomial-nb/1' },
-      { name: 'predictor ', file: 'predictor-spec.json', contract: 'pred/counting-backoff/1' },
-      { name: 'sla       ', file: 'sla-spec.json', contract: 'sla/empirical-quantiles/1' },
-      { name: 'gate      ', file: 'gate-spec.json', contract: 'gate/split-conformal/1' },
-    ])) {
-      log.info(`  ${line}`)
-    }
+    log.info(`  system reference date: ${referenceDate().toISOString()}`)
   }
+
+  /*
+   * No scheduler.
+   *
+   * The previous system started escalation, verification and clustering sweeps
+   * here. None of them belong in Layer 0 — escalation is our concept and NYC
+   * records nothing like it — and a sweep let loose over 350,000 imported rows
+   * would enqueue work for requests New York closed years ago.
+   */
 })
 
 async function shutdown(signal: string) {
   log.info(`${signal} received, shutting down`)
-  stopScheduler()
   server.close()
   await prisma.$disconnect()
   process.exit(0)

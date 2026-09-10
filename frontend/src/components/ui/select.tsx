@@ -4,16 +4,18 @@ import { cn } from '@/lib/utils'
 /**
  * A native select, deliberately.
  *
- * Officers use this on phones in the field, where the platform picker is faster
- * and more reliable than a custom listbox — and it needs no JavaScript.
+ * The platform picker is keyboard-operable and screen-reader-correct on every
+ * device without any work from us, which a custom listbox is not. This is a
+ * public service: the person filing on a six-year-old phone with the screen
+ * reader on is not an edge case, they are the point.
  */
 const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
     ({ className, children, ...props }, ref) => (
         <select
             ref={ref}
             className={cn(
-                'flex h-10 w-full rounded-[var(--radius-lg)] border border-[color:var(--input)] bg-[color:var(--card)] px-3 py-2 text-sm shadow-[var(--shadow-xs)] transition-colors',
-                'focus-visible:border-[color:var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]/25',
+                'flex h-9 w-full rounded-[var(--radius)] border border-line-strong bg-surface px-2 text-base text-ink',
+                'focus-visible:border-brand focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-brand',
                 'disabled:cursor-not-allowed disabled:opacity-60',
                 className,
             )}

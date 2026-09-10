@@ -2,48 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "api",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "--prefix",
-        "backend",
-        "run",
-        "dev"
-      ],
-      "port": 4000
-    },
-    {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "--prefix",
-        "frontend",
-        "run",
-        "dev"
-      ],
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
       "port": 3000
-    },
-    {
-      "name": "api-sim",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "--prefix",
-        "backend",
-        "run",
-        "dev:sim"
-      ],
-      "port": 4000
-    },
-    {
-      "name": "api-before",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "--prefix",
-        "backend",
-        "run",
-        "dev:before"
-      ],
-      "port": 4000
     }
   ]
 }

@@ -19,10 +19,9 @@ async function citizen(email: string) {
   return prisma.user.create({
     data: {
       email,
-      fullName: 'Audit Test Person',
-      hashedPassword: 'test-not-a-real-hash',
+      name: 'Audit Test Person',
+      passwordHash: 'test-not-a-real-hash',
       role: 'CITIZEN',
-      rank: 'CITIZEN',
     },
   })
 }
@@ -94,7 +93,7 @@ describe('the chain survives the rest of the schema', () => {
       entityId: 1,
       payload: {},
       actorId: user.id,
-      actorLabel: user.fullName,
+      actorLabel: user.name,
     })
 
     await expect(prisma.user.delete({ where: { id: user.id } })).rejects.toThrow()
@@ -111,7 +110,7 @@ describe('the chain survives the rest of the schema', () => {
       entityId: 1,
       payload: {},
       actorId: user.id,
-      actorLabel: user.fullName,
+      actorLabel: user.name,
     })
 
     await prisma.user.update({ where: { id: user.id }, data: { isActive: false } })

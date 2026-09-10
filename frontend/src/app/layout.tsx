@@ -1,53 +1,63 @@
 import type { Metadata, Viewport } from 'next'
-import { Archivo, IBM_Plex_Mono, Public_Sans } from 'next/font/google'
+import { IBM_Plex_Mono, Public_Sans } from 'next/font/google'
 import { THEME_BOOT_SCRIPT } from '@/components/shared/theme-toggle'
+import { SiteHeader } from '@/components/shared/site-header'
+import { SiteFooter } from '@/components/shared/site-footer'
+import { auth } from '@/lib/auth'
 import './globals.css'
 
 /**
- * Three faces, each doing one job.
+ * Two faces, each doing one job.
  *
- * Public Sans was drawn for government interfaces and is the running text: it
- * stays legible at the small sizes a dense queue needs, which is most of what
- * an officer reads. Archivo carries headings — a grotesque with enough
- * authority to read as signage rather than as a consumer app. IBM Plex Mono is
- * reserved for the things that must line up or be read aloud: reference
- * numbers, job codes, column labels, counts in a column.
+ * Public Sans was commissioned by the US government for civic interfaces and
+ * is the running text: it stays legible at the small sizes a dense register
+ * needs, which is most of what anyone reads here. IBM Plex Mono is reserved for
+ * things that must line up in a column or be read down a phone — SR numbers,
+ * timestamps, counts — with tabular figures so a column of them is a column
+ * rather than a ragged edge.
  */
 const publicSans = Public_Sans({
     subsets: ['latin'],
+    weight: ['400', '500', '600', '700'],
     display: 'swap',
-    variable: '--font-sans-public',
+    variable: '--font-public-sans',
 })
-const archivo = Archivo({
-    subsets: ['latin'],
-    weight: ['500', '600', '700'],
-    display: 'swap',
-    variable: '--font-display-archivo',
-})
+
 const plexMono = IBM_Plex_Mono({
     subsets: ['latin'],
     weight: ['400', '500', '600'],
     display: 'swap',
-    variable: '--font-mono-plex',
+    variable: '--font-plex-mono',
 })
 
 export const metadata: Metadata = {
-    title: 'DRISHTI-G — NOIDA Authority',
+    title: {
+        default: '311 Service Requests — academic replica',
+        template: '%s · 311 replica',
+    },
     description:
-        'Governance platform for NOIDA Authority: complaints routed through a real chain of command, and a risk score that explains itself.',
-    keywords: ['e-governance', 'Noida', 'NOIDA Authority', 'grievance', 'DRISHTI'],
+        'An academic replica of NYC 311, built on published NYC Open Data service requests for Brooklyn. Not affiliated with the City of New York.',
+    // Search engines should not present a replica of a municipal service as the
+    // municipal service. Someone must arrive here on purpose.
+    robots: { index: false, follow: false },
 }
 
 export const viewport: Viewport = {
     width: 'device-width',
     initialScale: 1,
     themeColor: [
-        { media: '(prefers-color-scheme: light)', color: '#4338CA' },
-        { media: '(prefers-color-scheme: dark)', color: '#0A0E1A' },
+        { media: '(prefers-color-scheme: light)', color: '#12467F' },
+        { media: '(prefers-color-scheme: dark)', color: '#0C0F14' },
     ],
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// The header renders the current session, so no page in the app may be
+// statically prerendered — the cookie is only readable per request.
+export const dynamic = 'force-dynamic'
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+    const user = await auth()
+
     return (
         <html lang="en" suppressHydrationWarning>
             <head>
@@ -56,13 +66,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
             </head>
             <body
-                className={`${publicSans.variable} ${archivo.variable} ${plexMono.variable} font-sans`}
+                className={`${publicSans.variable} ${plexMono.variable} flex min-h-screen flex-col`}
                 suppressHydrationWarning
             >
                 <a href="#main-content" className="skip-link">
                     Skip to main content
                 </a>
-                {children}
+                <SiteHeader user={user} />
+                <main id="main-content" className="flex-1">
+                    {children}
+                </main>
+                {/* Every page, no exceptions — see SiteFooter for why. */}
+                <SiteFooter />
             </body>
         </html>
     )

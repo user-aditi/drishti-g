@@ -1,139 +1,121 @@
-import type { Complaint, ComplaintCategory, Posting, Sector, User } from '@prisma/client'
+import type {
+  Agency,
+  OrgUnit,
+  RequestDescriptor,
+  RequestType,
+  ServiceRequest,
+  User,
+} from '@prisma/client'
 
-// Only the fields these helpers actually read are required, so a caller may
-// pass a narrowed `select` without fighting the type checker.
-type DepartmentRef = { id: number; code: string; name: string; icon: string }
-type AreaRef = { id: number; code: string; name: string }
-type SectorRef = { id: number; number: number; name: string }
+/**
+ * What leaves the API, and what never does.
+ *
+ * Everything a client sees passes through here. The point is not tidiness: it
+ * is that `passwordHash` cannot reach a response by someone forgetting a
+ * `select`, because no shape defined in this file has a field for it.
+ */
 
-type PostingWithRefs = Posting & {
-  department?: DepartmentRef | null
-  zone?: AreaRef | null
-  circle?: AreaRef | null
-  sector?: SectorRef | null
+type AgencyRef = { id: number; code: string; name: string }
+
+export function publicAgency(agency: Agency): AgencyRef {
+  return { id: agency.id, code: agency.code, name: agency.name }
 }
 
-export function publicPosting(p: PostingWithRefs) {
+export function publicOrgUnit(unit: OrgUnit) {
   return {
-    id: p.id,
-    rank: p.rank,
-    level: p.level,
-    designationTitle: p.designationTitle,
-    trade: p.trade,
-    employeeCode: p.employeeCode,
-    isPrimary: p.isPrimary,
-    department: p.department
-      ? { id: p.department.id, code: p.department.code, name: p.department.name, icon: p.department.icon }
-      : null,
-    zone: p.zone ? { id: p.zone.id, code: p.zone.code, name: p.zone.name } : null,
-    circle: p.circle ? { id: p.circle.id, code: p.circle.code, name: p.circle.name } : null,
-    sector: p.sector ? { id: p.sector.id, number: p.sector.number, name: p.sector.name } : null,
+    id: unit.id,
+    code: unit.code,
+    name: unit.name,
+    depth: unit.depth,
+    kindLabel: unit.kindLabel,
+    isLeaf: unit.isLeaf,
+    centroidLat: unit.centroidLat,
+    centroidLon: unit.centroidLon,
   }
 }
 
-type UserWithRefs = User & {
-  homeSector?: Sector | null
-  postings?: PostingWithRefs[]
-}
-
-/** Strip the password hash. Never send a User straight to the client. */
-export function publicUser(user: UserWithRefs) {
-  const { hashedPassword: _omit, ...rest } = user
-  const postings = user.postings?.map(publicPosting) ?? []
+export function publicUser(user: User & { agency?: Agency | null; orgUnit?: OrgUnit | null }) {
   return {
-    ...rest,
-    homeSector: user.homeSector
-      ? { id: user.homeSector.id, number: user.homeSector.number, name: user.homeSector.name }
-      : null,
-    postings,
-    /** The posting the UI should lead with. */
-    primaryPosting: postings.find((p) => p.isPrimary) ?? postings[0] ?? null,
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    agency: user.agency ? publicAgency(user.agency) : null,
+    orgUnit: user.orgUnit ? { id: user.orgUnit.id, code: user.orgUnit.code, name: user.orgUnit.name } : null,
+    // Always sent, never optional. Every staff account in this system stands in
+    // for a role NYC does not record, and the UI has to be able to say so
+    // wherever it shows one. A synthetic account presented as a real person is
+    // the one thing this replica must never do.
+    isSynthetic: user.isSynthetic,
   }
 }
 
-type ComplaintWithRefs = Complaint & {
-  category?: ComplaintCategory | null
-  department?: DepartmentRef | null
-  sector?:
-    | (SectorRef & { circle?: ({ id: number; name: string } & { zone?: { id: number; name: string } | null }) | null })
-    | null
-  citizen?: User | null
-  assignedOfficer?: User | null
-  assignedWorker?: User | null
+export function publicRequestType(
+  type: RequestType & { agency?: Agency | null; descriptors?: RequestDescriptor[] },
+) {
+  return {
+    id: type.id,
+    code: type.code,
+    name: type.name,
+    slaHours: type.slaHours,
+    slaSource: type.slaSource,
+    // Travels with the SLA rather than beside it. NYC publishes no due date for
+    // any of these complaint types, so every deadline here is derived, and a
+    // caption that quietly drops the provenance turns a measurement into a claim
+    // the City never made.
+    slaNote: type.slaNote,
+    agency: type.agency ? publicAgency(type.agency) : null,
+    descriptors: type.descriptors?.map((d) => ({ id: d.id, name: d.name })) ?? [],
+  }
 }
 
-/** Shape a complaint for the client, flattening the relations the UI shows. */
-export function publicComplaint(c: ComplaintWithRefs) {
-  return {
-    id: c.id,
-    referenceNo: c.referenceNo,
-    title: c.title,
-    description: c.description,
-    photoUrl: c.photoUrl,
-    latitude: c.latitude,
-    longitude: c.longitude,
-    address: c.address,
-    landmark: c.landmark,
-    status: c.status,
-    priority: c.priority,
-    slaDueAt: c.slaDueAt,
-    resolvedAt: c.resolvedAt,
-    closedAt: c.closedAt,
-    escalationLevel: c.escalationLevel,
-    feedbackRating: c.feedbackRating,
-    feedbackComment: c.feedbackComment,
-    createdAt: c.createdAt,
-    updatedAt: c.updatedAt,
-    category: c.category
-      ? { id: c.category.id, name: c.category.name, icon: c.category.icon, trade: c.category.trade }
-      : null,
-    department: c.department
-      ? { id: c.department.id, name: c.department.name, code: c.department.code, icon: c.department.icon }
-      : null,
-    sector: c.sector
-      ? {
-          id: c.sector.id,
-          number: c.sector.number,
-          name: c.sector.name,
-          circle: c.sector.circle
-            ? {
-                id: c.sector.circle.id,
-                name: c.sector.circle.name,
-                zone: c.sector.circle.zone
-                  ? { id: c.sector.circle.zone.id, name: c.sector.circle.zone.name }
-                  : null,
-              }
-            : null,
-        }
-      : null,
-    citizen: c.citizen
-      ? { id: c.citizen.id, fullName: c.citizen.fullName, phone: c.citizen.phone }
-      : null,
-    assignedOfficer: c.assignedOfficer
-      ? { id: c.assignedOfficer.id, fullName: c.assignedOfficer.fullName, rank: c.assignedOfficer.rank }
-      : null,
-    assignedWorker: c.assignedWorker
-      ? { id: c.assignedWorker.id, fullName: c.assignedWorker.fullName }
-      : null,
-  }
+type RequestWithRefs = ServiceRequest & {
+  type?: (RequestType & { agency?: Agency | null }) | null
+  descriptor?: RequestDescriptor | null
+  agency?: Agency | null
+  orgUnit?: OrgUnit | null
 }
 
 /**
- * Sequential per-year reference, e.g. DG-2026-000042.
+ * One service request as the API reports it.
  *
- * Derived from the row id rather than a counter, so it cannot collide and needs
- * no extra table.
+ * `isOverdue` is computed here and never stored, against a reference date the
+ * caller supplies rather than against `Date.now()`. That is not a style
+ * preference: this corpus ends in December 2025, so a wall-clock comparison
+ * marks essentially every imported request overdue, and the same bug in the
+ * other direction once produced 2,554 open complaints and zero overdue.
  */
-export function referenceNoFor(id: number, at: Date = new Date()): string {
-  return `DG-${at.getFullYear()}-${String(id).padStart(6, '0')}`
-}
+export function publicRequest(request: RequestWithRefs, referenceDate: Date) {
+  const isClosed = request.closedAt !== null
+  const dueAt = request.slaDueAt
+  const isOverdue =
+    dueAt !== null && (isClosed ? request.closedAt! > dueAt : referenceDate > dueAt)
 
-/** Prisma include for a complaint with everything the client renders. */
-export const COMPLAINT_INCLUDE = {
-  category: true,
-  department: true,
-  sector: { include: { circle: { include: { zone: true } } } },
-  citizen: true,
-  assignedOfficer: true,
-  assignedWorker: true,
-} as const
+  return {
+    id: request.id,
+    srNumber: request.srNumber,
+    status: request.status,
+    channel: request.channel,
+    type: request.type ? { id: request.type.id, code: request.type.code, name: request.type.name } : null,
+    descriptor: request.descriptor ? { id: request.descriptor.id, name: request.descriptor.name } : null,
+    agency: request.agency ? publicAgency(request.agency) : null,
+    orgUnit: request.orgUnit
+      ? { id: request.orgUnit.id, code: request.orgUnit.code, name: request.orgUnit.name }
+      : null,
+    createdAt: request.createdAt,
+    closedAt: request.closedAt,
+    slaDueAt: request.slaDueAt,
+    isOverdue,
+    latitude: request.latitude,
+    longitude: request.longitude,
+    address: request.address,
+    zip: request.zip,
+    councilDistrict: request.councilDistrict,
+    policePrecinct: request.policePrecinct,
+    resolutionNote: request.resolutionNote,
+    // Load-bearing in the UI, not decoration: an imported row is a historical
+    // record of something New York did, and one filed here is something this
+    // system did. A citizen looking at a status page should be able to tell.
+    isImported: request.isImported,
+  }
+}
