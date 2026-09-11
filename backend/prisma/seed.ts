@@ -232,6 +232,15 @@ async function seedUsers(agencies: Map<string, number>, homeBoardId: number) {
         agencyId: agencies.get(agency.code) ?? null,
         orgUnitId: null,
       })),
+      // Layer 3: the administrator's console — risk register, routing report,
+      // audit chain. Belongs to no agency, because it reads across all of them.
+      {
+        email: `admin@${SYNTHETIC_DOMAIN}`,
+        name: 'Platform Administrator',
+        role: Role.ADMIN,
+        agencyId: null,
+        orgUnitId: null,
+      },
     ]
 
   for (const account of accounts) {

@@ -132,7 +132,11 @@ def deadlines(corpus: pd.DataFrame, hours: dict[str, float] | None = None) -> pd
     hours = hours if hours is not None else sla_hours(corpus)
     created = pd.to_datetime(corpus["created_date"], errors="coerce")
     offsets = corpus["complaint_type"].map(hours)
-    return created + pd.to_timedelta(offsets, unit="h")
+    # To the millisecond, as the product stores it. In nanoseconds, Water
+    # System's 47.6333... hours comes out one nanosecond short of 47h38m, and a
+    # request closed on the deadline second read as late here and on time in the
+    # backend: four unit-months disagreed by one request each (F-47).
+    return created + pd.to_timedelta((offsets * 3_600_000).round(), unit="ms")
 
 
 def run() -> pd.DataFrame:

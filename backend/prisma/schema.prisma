@@ -57,6 +57,7 @@ enum Role {
   OFFICER /// Layer 1: the named person accountable for specific requests
   SUPERVISOR /// Layer 1: assigns and reassigns officers within an agency
   COMMISSIONER /// Layer 2: heads an agency in the borough; the top of the escalation ladder
+  ADMIN /// Layer 3: reads the risk register, the routing report and the audit chain
 }
 
 /// The status values NYC publishes, kept as they are.
@@ -160,6 +161,9 @@ model OrgUnit {
   users    User[]
   postings Posting[]
 
+  // Layer 3
+  riskScores RiskScore[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -186,6 +190,9 @@ model Agency {
   requests     ServiceRequest[]
   users        User[]
   postings     Posting[]
+
+  // Layer 3
+  riskScores   RiskScore[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -657,3 +664,51 @@ model Escalation {
   @@index([at])
   @@map("escalations")
 }
+
+// ===========================================================================
+// LAYER 3 — GRIE, the risk radar. Ours, not NYC's.
+// ===========================================================================
+//
+// One score per (model, agency, community board, month). The model is data
+// exported by research/drishti_research/nyc_grie.py; this table records what it
+// said and, once the next month is on record, what then happened — so "do
+// high-scored boards actually fail next month?" can be asked of the rows
+// themselves rather than of a claim.
+//
+// GCCE has no table. Routing was measured and found to have nothing to learn in
+// this slice (F-23); the report is read from backend/data/gcce-spec.json.
+
+model RiskScore {
+  id          Int      @id @default(autoincrement())
+  agencyId    Int
+  orgUnitId   Int
+  /// First instant of the calendar month scored, in record time.
+  month       DateTime
+  requests    Int
+  /// The five raw signals, as services/riskSignals.ts computed them.
+  signals     Json
+  /// [{ factor, label, raw, normalised, weight, contribution, explanation }]
+  factors     Json
+  /// The weighted sum on 0-100. It ranks; it is not a probability, and the
+  /// product never shows it as one.
+  score       Float
+  /// Calibrated: the chance this unit's missed-deadline rate lands in the worst
+  /// fifth of the panel next month.
+  probability Float
+  needsReview Boolean
+  /// Next month's missed-deadline rate, when that month is on record with
+  /// enough requests to count. Null for the last month of the corpus.
+  nextBreachRate Float?
+  /// Whether it landed in the worst fifth. Null when not yet observable.
+  outcome     Boolean?
+  modelVersion String
+  computedAt  DateTime @default(now())
+
+  agency  Agency  @relation(fields: [agencyId], references: [id], onDelete: Restrict)
+  orgUnit OrgUnit @relation(fields: [orgUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([modelVersion, agencyId, orgUnitId, month])
+  @@index([month, agencyId, probability])
+  @@map("risk_scores")
+}
+

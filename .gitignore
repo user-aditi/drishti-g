@@ -45,3 +45,7 @@ research/data/bpic2018/
 # imports against.
 research/data/nyc/brooklyn.csv
 research/data/nyc/parts/
+# The routing arm's slice, the four complaint types more than one agency works:
+# 25MB, re-pullable with `python -m drishti_research.nyc_routing --refresh`.
+research/data/nyc/routing.csv
+research/data/nyc/routing-parts/

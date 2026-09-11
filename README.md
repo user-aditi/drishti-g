@@ -252,11 +252,108 @@ history that feeds the process-mining log. Delete the Layer 1 block in `app.ts`
 and the baseline is back, unmodified. `npm run verify:import` still passes all
 six checks after the backfill.
 
+## What Layer 2 adds — escalation
+
+NYC 311 records no escalation: a request sits with its agency until the agency
+closes it. Layer 2 adds a ladder inside each agency — the accountable officer,
+then the agency's supervisor once a request passes its derived deadline, then a
+synthetic borough commissioner once it has been open for twice its service
+level. Escalating brings someone senior in beside the officer. It never takes
+the request away from them, and it writes no status history, because an
+escalation is not one of NYC's statuses.
+
+| Route | Who | What |
+|---|---|---|
+| `/supervisor/escalations` | Supervisor, commissioner | What climbed the ladder, highest rung first, with the reason |
+| Escalation panel on `/officer/sr/[srNumber]` | Officer, supervisor | Who the request is with now, each rung and why, and a button to raise it |
+
+**The sweep acts only on live requests.** Every open imported request is past
+its deadline at the snapshot, and escalating all 6,315 of them the first time
+the sweep ran would be reacting today to delays New York lived through years
+ago. So it leaves NYC's history alone unless this system has since acted on a
+request. A person can escalate before any breach, but only with a reason: that
+sentence is all the senior person it reaches has to go on.
+
+**Each record is judged at the moment it was observed.** NYC's rows at the
+snapshot, requests filed here against the real clock. Before that rule, a
+request filed through the replica could never be overdue and the sweep could
+never fire (F-24).
+
+**How it's measured.** The plan asked whether escalations coincide with the
+requests NYC closed late. They do, 100%, by construction: the same deadline
+defines both. So `npm run layer2:measure` reports that as the tautology it is,
+and asks the question NYC's own timestamps can answer — would an earlier warning
+have been right?
+
+| Warning fires at | Flagged requests that end up late |
+|---|---|
+| a quarter of the service level | 43.9% |
+| half | 62.1% |
+| three quarters | 77.5% |
+
+The live sweep has not had a breach to act on yet: the earliest deadline among
+requests filed here is 15 September 2026 (F-37). Its behaviour, including two
+sweeps overlapping, is covered by the tests.
+
+## What Layer 3 adds — the risk radar, and a routing report
+
+Both engines the project started with live here, and both came out of NYC's
+data different from how they went in.
+
+| Route | Who | What |
+|---|---|---|
+| `/admin/risk` | Administrator | Every agency's boards, month by month: the chance of being among the worst fifth for missed deadlines next month, why, and — where the corpus can say — what happened |
+| `/admin/routing` | Administrator | Whether a model can route better than NYC's own taxonomy: the measurement, and the table it learned |
+| `/admin/audit` | Administrator | The audit chain, with a button that verifies it |
+
+**GRIE is trained in Python and run from a spec.** `nyc_grie.py` chooses between
+candidates under grouped cross-validation by a rule written down before it ran,
+calibrates the winner, and writes `backend/data/grie-spec.json`. The backend
+computes the five signals from its own database in SQL, and
+`npm run layer3:measure` checks that it reproduces the study's 2,538 unit-months
+— every signal, the score and the probability. Writing that SQL from the study's
+docstring is how a bug in the study itself was found (F-39).
+
+| Candidate, grouped cross-validation | AUC | Within agency |
+|---|---|---|
+| Hand-set weights (GRIE as built for NOIDA) | 0.674 | 0.701 |
+| **Tuned weights, caps re-derived from NYC — shipped** | **0.807** | **0.783** |
+| This month's missed deadlines, alone | 0.820 | 0.789 |
+
+Read the last row. Tuned on NYC, GRIE puts 80% of its weight on this month's
+missed deadlines, and the other four factors sit at the 5% floor that keeps them
+in the explanation. That floor costs 0.0125 AUC (95% interval 0.005 to 0.020):
+the single factor ranks boards better (F-38). What NYC's data lets you predict is
+mostly a unit's missed-deadline rate persisting into the next month. Shipping the
+single factor instead would be an export, not a code change.
+
+The register shows the calibrated chance and never the bare score, which only
+ranks: raw, the score averaged 25.8% against an observed 20.0%; calibrated,
+20.1%. Of 220 units flagged where the next month is on record, 172 (78%) did
+land in the worst fifth.
+
+**GCCE is a report, not a router.** NYC's complaint types are defined per agency,
+so choosing the type chooses the agency — for 184 of the 188 filed in Brooklyn in
+2024. On the four that are shared, a lookup table beats always choosing the usual
+agency by 1.9 points on 2025, entirely where NYC's own descriptor names the
+agency; nothing known at intake predicts Encampment or Highway Condition.
+Running it live would reproduce NYC's menu, so `nyc_routing.py` measures it and
+`/admin/routing` reports it.
+
 ## Proving it still works
 
 ```bash
 cd backend && npm test
 ```
+
+Each layer also has a check that runs against the real corpus:
+
+| Command | What it proves |
+|---|---|
+| `npm run verify:import` | Layer 0: the corpus matches NYC's source, and the audit chain holds |
+| `npm run layer1:measure` | Every open request has exactly one correctly posted officer |
+| `npm run layer2:measure` | Escalation fires on breach only, and never on NYC's history |
+| `npm run layer3:measure` | The backend reproduces the study's risk model on every unit-month |
 
 Tests run against a real Postgres database, `drishti_nyc_test`, not a mock. The
 logic worth testing here is all queries — the chain under concurrency, the

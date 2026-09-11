@@ -37,6 +37,12 @@ const SUPERVISOR_LINKS: NavLink[] = [
 ]
 /** Layer 2. */
 const COMMISSIONER_LINKS: NavLink[] = [{ href: '/supervisor/escalations', label: 'Escalations' }]
+/** Layer 3. */
+const ADMIN_LINKS: NavLink[] = [
+    { href: '/admin/risk', label: 'Risk' },
+    { href: '/admin/routing', label: 'Routing' },
+    { href: '/admin/audit', label: 'Audit' },
+]
 
 const AGENT_LINKS: NavLink[] = [
     { href: '/agency/queue', label: 'Queue' },
@@ -52,6 +58,7 @@ export function SiteHeader({ user }: { user: User | null }) {
         ...(user?.role === 'OFFICER' ? OFFICER_LINKS : []),
         ...(user?.role === 'SUPERVISOR' ? SUPERVISOR_LINKS : []),
         ...(user?.role === 'COMMISSIONER' ? COMMISSIONER_LINKS : []),
+        ...(user?.role === 'ADMIN' ? ADMIN_LINKS : []),
     ]
 
     return (

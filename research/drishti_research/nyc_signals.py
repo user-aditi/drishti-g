@@ -85,7 +85,8 @@ import numpy as np
 import pandas as pd
 
 from .nyc import DATA
-from .nyc_sla import deadlines, sla_hours
+from .nyc_sla import TABLE as SLA_TABLE
+from .nyc_sla import deadlines
 
 #: A unit-period thinner than this is dropped. A breach rate over a handful of
 #: requests is noise, and keeping those rows would make the panel look larger
@@ -163,7 +164,12 @@ def load_corpus() -> pd.DataFrame:
     frame["month"] = frame["created_date"].dt.to_period("M")
     frame["closed_month"] = frame["closed_date"].dt.to_period("M")
 
-    frame["deadline"] = deadlines(frame, sla_hours(frame))
+    # The frozen SLA table, not a fresh derivation over this frame. Deriving here
+    # took the p75 over placed requests only, so every deadline sat a little off
+    # the one the product stores and shows; since Phase 7 the backend computes
+    # these signals from its stored deadlines, and the two have to agree.
+    table = pd.read_csv(SLA_TABLE)
+    frame["deadline"] = deadlines(frame, dict(zip(table["complaint_type"], table["sla_hours"].astype(float))))
     frame["referred"] = _contains_any(frame["resolution_description"], REFERRAL_MARKERS)
     frame["enforced"] = _contains_any(frame["resolution_description"], ENFORCEMENT_MARKERS)
     frame["escalated"] = frame["referred"] | frame["enforced"]
@@ -194,16 +200,20 @@ def _mark_repeats(frame: pd.DataFrame) -> pd.Series:
     distinct values, and iterating them in Python costs minutes for work pandas
     does in one vectorised pass.
 
-    Times are carried as float nanoseconds so that a request still open reads as
-    NaN and propagates correctly: ``skipna`` leaves it out of the running
-    minimum, and ``NaN < filed`` is False, which is exactly right — a request
-    that never closed cannot be evidence that a repair did not hold.
+    Times are carried as float nanoseconds, and a request still open as
+    +infinity: it never closed, so it can never be the earlier closure — and it
+    must not interrupt the run of earlier ones either. The first version left it
+    as NaN, trusting ``skipna``; but a grouped cummin returns NaN *at* a NaN
+    position rather than carrying the running minimum through it, so a request
+    filed straight after one still open was never a repeat, however many
+    earlier ones there had closed. 1,153 requests, found when the backend's SQL,
+    written from this docstring, disagreed with the code under it (F-39).
     """
     keyed = frame[frame["place"] != ""].sort_values(
         ["place", "complaint_type", "created_date"], kind="stable"
     )
-    closed_ns = keyed["closed_date"].astype("int64").where(keyed["closed_date"].notna()).astype(
-        float
+    closed_ns = (
+        keyed["closed_date"].astype("int64").where(keyed["closed_date"].notna()).astype(float).fillna(np.inf)
     )
     grouped = closed_ns.groupby([keyed["place"], keyed["complaint_type"]], sort=False)
     earliest_prior_close = grouped.shift(1).groupby(
@@ -251,9 +261,13 @@ def build_panel() -> pd.DataFrame:
     still_open_late = frame["closed_date"].isna() & (period_close > frame["deadline"])
     frame["breached"] = resolved_late | still_open_late
 
-    frame["resolution_days"] = (
-        frame["closed_date"] - frame["created_date"]
-    ).dt.total_seconds() / 86400.0
+    # A request NYC closed before it was filed has no knowable duration: 2,382
+    # rows carry one. The product counts those as unknown (F-29), and since
+    # Phase 7 this signal is computed by the backend as well as here, it does
+    # too — a mean that included them would be dragged down by durations that
+    # never happened. Excluded rather than zeroed; they still count as closed.
+    days = (frame["closed_date"] - frame["created_date"]).dt.total_seconds() / 86400.0
+    frame["resolution_days"] = days.where(days >= 0)
 
     by_period = frame.groupby(["agency", "board", "month"], observed=True)
     panel = by_period.agg(

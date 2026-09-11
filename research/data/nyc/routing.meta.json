@@ -1,0 +1,18 @@
+{
+  "dataset": "erm2-nwe9",
+  "pulled_at": "2026-09-11T15:15:46+00:00",
+  "borough": "BROOKLYN",
+  "period": [
+    "2022-01-01T00:00:00",
+    "2026-01-01T00:00:00"
+  ],
+  "complaint_types": [
+    "Encampment",
+    "Highway Condition",
+    "Asbestos",
+    "Graffiti"
+  ],
+  "where": "borough = 'BROOKLYN' AND created_date >= '2022-01-01T00:00:00' AND created_date < '2026-01-01T00:00:00' AND complaint_type in ('Encampment', 'Highway Condition', 'Asbestos', 'Graffiti')",
+  "rows": 69046,
+  "attribution": "NYC Open Data, 311 Service Requests (erm2-nwe9)"
+}

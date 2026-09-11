@@ -1,0 +1,271 @@
+{
+  "contract": "gcce-table/1",
+  "modelVersion": "nyc-routing-descriptor-20260911",
+  "trainedAt": "2026-09-11T15:15:51+00:00",
+  "source": "research/drishti_research/nyc_routing.py",
+  "chosen": "descriptor",
+  "types": [
+    "Encampment",
+    "Highway Condition",
+    "Asbestos",
+    "Graffiti"
+  ],
+  "chain": [
+    [
+      "descriptor"
+    ],
+    []
+  ],
+  "minSupport": 20,
+  "cells": [
+    {
+      "level": 0,
+      "type": "Asbestos",
+      "values": [
+        "Asbestos Complaint (B1)"
+      ],
+      "agency": "DEP",
+      "support": 1150,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Asbestos",
+      "values": [
+        "N/A"
+      ],
+      "agency": "DOHMH",
+      "support": 650,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Encampment",
+      "values": [
+        "N/A"
+      ],
+      "agency": "NYPD",
+      "support": 28309,
+      "share": 0.7665
+    },
+    {
+      "level": 0,
+      "type": "Graffiti",
+      "values": [
+        "Graffiti"
+      ],
+      "agency": "DSNY",
+      "support": 35733,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Graffiti",
+      "values": [
+        "Police Report Not Requested"
+      ],
+      "agency": "NYPD",
+      "support": 846,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Graffiti",
+      "values": [
+        "Police Report Requested"
+      ],
+      "agency": "NYPD",
+      "support": 339,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Cave-in"
+      ],
+      "agency": "DOT",
+      "support": 127,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Crash Cushion Defect"
+      ],
+      "agency": "DOT",
+      "support": 77,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Dead Animal"
+      ],
+      "agency": "DOT",
+      "support": 114,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Graffiti - Highway"
+      ],
+      "agency": "DOT",
+      "support": 235,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "High Grass"
+      ],
+      "agency": "DOT",
+      "support": 65,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Highway Fence"
+      ],
+      "agency": "DOT",
+      "support": 29,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Litter"
+      ],
+      "agency": "DOT",
+      "support": 370,
+      "share": 0.6054
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Loose Plate"
+      ],
+      "agency": "DOT",
+      "support": 52,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Painted Line/Marking"
+      ],
+      "agency": "DOT",
+      "support": 93,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Pothole - Highway"
+      ],
+      "agency": "DOT",
+      "support": 760,
+      "share": 1.0
+    },
+    {
+      "level": 0,
+      "type": "Highway Condition",
+      "values": [
+        "Unsafe Worksite"
+      ],
+      "agency": "DOT",
+      "support": 59,
+      "share": 1.0
+    },
+    {
+      "level": 1,
+      "type": "Asbestos",
+      "values": [],
+      "agency": "DEP",
+      "support": 1800,
+      "share": 0.6389
+    },
+    {
+      "level": 1,
+      "type": "Encampment",
+      "values": [],
+      "agency": "NYPD",
+      "support": 28309,
+      "share": 0.7665
+    },
+    {
+      "level": 1,
+      "type": "Graffiti",
+      "values": [],
+      "agency": "DSNY",
+      "support": 36918,
+      "share": 0.9679
+    },
+    {
+      "level": 1,
+      "type": "Highway Condition",
+      "values": [],
+      "agency": "DOT",
+      "support": 2019,
+      "share": 0.9277
+    }
+  ],
+  "evaluation": {
+    "trainedOn": "2022-2024 for the report; all of 2022-2025 for the shipped tables",
+    "testYear": 2025,
+    "testRows": 17715,
+    "accuracy": {
+      "modal": 0.8697,
+      "descriptor": 0.8887,
+      "descriptor_location": 0.8887,
+      "descriptor_channel": 0.8887,
+      "full": 0.8887
+    },
+    "validation": {
+      "modal": 0.9,
+      "descriptor": 0.9145,
+      "descriptor_location": 0.9145,
+      "descriptor_channel": 0.9145,
+      "full": 0.9145
+    },
+    "perType": {
+      "Encampment": {
+        "rows": 7156,
+        "modal": 0.7391,
+        "chosen": 0.7391
+      },
+      "Highway Condition": {
+        "rows": 519,
+        "modal": 0.7977,
+        "chosen": 0.7977
+      },
+      "Asbestos": {
+        "rows": 525,
+        "modal": 0.6495,
+        "chosen": 1.0
+      },
+      "Graffiti": {
+        "rows": 9515,
+        "modal": 0.9839,
+        "chosen": 1.0
+      }
+    },
+    "gainOverModal": {
+      "gain": 0.019,
+      "ciLow": 0.017,
+      "ciHigh": 0.0211
+    },
+    "gatePassed": true
+  }
+}

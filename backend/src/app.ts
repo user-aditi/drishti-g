@@ -16,6 +16,9 @@ import { officerRouter } from './routes/officer.js'
 import { supervisorRouter } from './routes/supervisor.js'
 import { workOrdersRouter } from './routes/workOrders.js'
 import { escalationsRouter } from './routes/escalations.js'
+import { adminRouter } from './routes/admin.js'
+import { riskRouter } from './routes/risk.js'
+import { routingRouter } from './routes/routing.js'
 import { assignOnFiling } from './services/assignment.js'
 import { onFiled } from './services/requestHooks.js'
 
@@ -60,6 +63,13 @@ export function createApp(): Express {
   // The sweep that climbs the ladder is started in index.ts: a timer belongs to
   // the running process, not to an app that every test file composes afresh.
   app.use(api, escalationsRouter)
+
+  // ---- Layer 3: GRIE, and GCCE's routing report. Ours, not NYC's. ---------
+  // All three are the administrator's. The audit viewer has its own routes
+  // rather than widening Layer 0's to a Layer 3 role (N5).
+  app.use(`${api}/risk`, riskRouter)
+  app.use(`${api}/routing`, routingRouter)
+  app.use(`${api}/admin`, adminRouter)
 
   app.get('/', (_req, res) => {
     res.json({

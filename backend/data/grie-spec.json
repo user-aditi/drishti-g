@@ -1,0 +1,269 @@
+{
+  "contract": "grie-nyc/1",
+  "modelVersion": "nyc-tuned-nyc-20260911-37845d5b",
+  "trainedAt": "2026-09-11T17:31:31+00:00",
+  "source": "research/drishti_research/nyc_grie.py",
+  "chosen": "tuned_nyc",
+  "unit": "agency x community board x calendar month",
+  "minRequests": 20,
+  "label": {
+    "description": "Next month, this unit's share of requests past their derived deadline lands in the worst 20% of the panel",
+    "quantile": 0.8,
+    "cutoff": 0.3460100647016535,
+    "baseRate": 0.20015760441292357
+  },
+  "trainedOn": {
+    "rows": 2538,
+    "units": 54,
+    "firstMonth": "2022-01",
+    "lastMonth": "2025-11"
+  },
+  "markers": {
+    "referral": [
+      "has requested the department of",
+      "referred it to the department",
+      "referred to the department",
+      "not to be under",
+      "out of jurisdiction",
+      "is not under the jurisdiction",
+      "jurisdiction of the"
+    ],
+    "enforcement": [
+      "notice of violation",
+      "issued a summons",
+      "corrective action repair",
+      "issued a violation"
+    ],
+    "duplicate": [
+      "is a duplicate of a previously filed complaint",
+      "open service request already exists for the same location"
+    ]
+  },
+  "factors": [
+    {
+      "key": "slaBreachRate",
+      "label": "Missed deadlines",
+      "weight": 0.7999978708155654,
+      "curve": {
+        "kind": "proportion"
+      }
+    },
+    {
+      "key": "repeatComplaintRate",
+      "label": "Repairs that did not hold",
+      "weight": 0.050000011637904206,
+      "curve": {
+        "kind": "proportion"
+      }
+    },
+    {
+      "key": "escalationRate",
+      "label": "Referred or enforced",
+      "weight": 0.050000736462229446,
+      "curve": {
+        "kind": "proportion"
+      }
+    },
+    {
+      "key": "openComplaintLoad",
+      "label": "Open requests",
+      "weight": 0.05000003701904387,
+      "curve": {
+        "kind": "linear",
+        "cap": 471.0
+      }
+    },
+    {
+      "key": "avgResolutionDays",
+      "label": "Days to close",
+      "weight": 0.05000134406525716,
+      "curve": {
+        "kind": "linear",
+        "cap": 20.98675832729066
+      }
+    }
+  ],
+  "handSpecified": {
+    "weights": {
+      "slaBreachRate": 0.28,
+      "repeatComplaintRate": 0.27,
+      "escalationRate": 0.2,
+      "openComplaintLoad": 0.15,
+      "avgResolutionDays": 0.1
+    },
+    "caps": {
+      "openComplaintLoad": 25.0,
+      "avgResolutionDays": 14.0
+    }
+  },
+  "calibration": {
+    "kind": "isotonic",
+    "x": [
+      2.8004365613844815,
+      9.102499791768405,
+      9.105573580143766,
+      11.92125005931326,
+      11.967965614999367,
+      13.516360126411211,
+      13.584463182701892,
+      19.619152973547408,
+      19.656426238332486,
+      25.89217569801591,
+      25.89919992426966,
+      26.18949420237958,
+      26.190445090120523,
+      26.234614246304023,
+      26.23784810179466,
+      26.738456524185285,
+      26.740581224432844,
+      27.676457782901775,
+      27.68362053154136,
+      27.89934264286635,
+      27.90150576207073,
+      30.60203502579575,
+      30.602323229770196,
+      33.84179417751636,
+      33.848411484032596,
+      33.88905850333698,
+      33.928739906819715,
+      37.40380276323433,
+      37.414794725458634,
+      40.406036052961234,
+      40.466988790953145,
+      42.25975883338078,
+      42.29665734382719,
+      43.013433427858686,
+      43.048561140198636,
+      43.121788239184944,
+      43.29766533508725,
+      47.52434598804659,
+      47.71917856954349,
+      48.200274359673315,
+      48.26154479920505,
+      52.41959227147195,
+      52.606970062184075,
+      53.606890318102316,
+      53.94871744316032,
+      55.747381265576315,
+      55.86532179791355,
+      61.65533565636766,
+      62.00445311267583,
+      65.91721838880345,
+      66.4354658831029,
+      88.21180840981359
+    ],
+    "y": [
+      0.0,
+      0.0,
+      0.017391304347826087,
+      0.017391304347826087,
+      0.0273972602739726,
+      0.0273972602739726,
+      0.07837837837837838,
+      0.07837837837837838,
+      0.11846689895470383,
+      0.11846689895470383,
+      0.13513513513513514,
+      0.13513513513513514,
+      0.16666666666666666,
+      0.16666666666666666,
+      0.1702127659574468,
+      0.1702127659574468,
+      0.17582417582417584,
+      0.17582417582417584,
+      0.18181818181818182,
+      0.18181818181818182,
+      0.19,
+      0.19,
+      0.2347417840375587,
+      0.2347417840375587,
+      0.25,
+      0.25,
+      0.3271604938271605,
+      0.3271604938271605,
+      0.358695652173913,
+      0.358695652173913,
+      0.4523809523809524,
+      0.4523809523809524,
+      0.4666666666666667,
+      0.4666666666666667,
+      0.5,
+      0.5,
+      0.5769230769230769,
+      0.5769230769230769,
+      0.625,
+      0.625,
+      0.6571428571428571,
+      0.6571428571428571,
+      0.6666666666666666,
+      0.6666666666666666,
+      0.8181818181818182,
+      0.8181818181818182,
+      0.9210526315789473,
+      0.9210526315789473,
+      0.9230769230769231,
+      0.9230769230769231,
+      1.0,
+      1.0
+    ]
+  },
+  "reviewProbability": 0.5,
+  "evaluation": {
+    "candidates": {
+      "hand": {
+        "cvAuc": 0.6743,
+        "cvAucSd": 0.043,
+        "withinAgencyAuc": 0.7011,
+        "maxSaturation": 0.761,
+        "saturatedFactor": "openComplaintLoad"
+      },
+      "persistence": {
+        "cvAuc": 0.8196,
+        "cvAucSd": 0.0329,
+        "withinAgencyAuc": 0.7885,
+        "maxSaturation": 0.761,
+        "saturatedFactor": "openComplaintLoad"
+      },
+      "tuned_noida": {
+        "cvAuc": 0.8115,
+        "cvAucSd": 0.0357,
+        "withinAgencyAuc": 0.7857,
+        "maxSaturation": 0.761,
+        "saturatedFactor": "openComplaintLoad"
+      },
+      "tuned_nyc": {
+        "cvAuc": 0.8073,
+        "cvAucSd": 0.0364,
+        "withinAgencyAuc": 0.783,
+        "maxSaturation": 0.05,
+        "saturatedFactor": "openComplaintLoad"
+      },
+      "tuned_agency": {
+        "cvAuc": 0.8139,
+        "cvAucSd": 0.0341,
+        "withinAgencyAuc": 0.7841,
+        "maxSaturation": 0.052,
+        "saturatedFactor": "openComplaintLoad"
+      }
+    },
+    "shippedVsHand": {
+      "aucGap": 0.1346,
+      "ciLow": 0.1149,
+      "ciHigh": 0.1548
+    },
+    "shippedVsPersistence": {
+      "aucGap": -0.0125,
+      "ciLow": -0.0197,
+      "ciHigh": -0.0053
+    },
+    "calibration": {
+      "rawEce": 0.0949,
+      "rawBrier": 0.1272,
+      "calibratedEce": 0.0163,
+      "calibratedBrier": 0.117,
+      "meanRaw": 0.2582,
+      "meanCalibrated": 0.2007,
+      "observed": 0.2002
+    }
+  }
+}

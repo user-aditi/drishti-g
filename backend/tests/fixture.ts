@@ -51,6 +51,8 @@ export async function reset() {
     // Layer 1 rows reference users with `Restrict`, so they go before users do.
     prisma.workOrder.deleteMany(),
     prisma.assignment.deleteMany(),
+    // Layer 3 scores reference agencies and boards with `Restrict`.
+    prisma.riskScore.deleteMany(),
     prisma.serviceRequest.deleteMany(),
     prisma.posting.deleteMany(),
     prisma.requestDescriptor.deleteMany(),

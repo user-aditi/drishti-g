@@ -1198,3 +1198,119 @@ establish which one GRIE is.
 Data: `research/results/nyc-interpretability.csv`,
 `nyc-interpretability-gaps.csv`, `research/data/nyc/due-date-coverage.csv`,
 `sla-table.csv`.
+
+## Phase 7 — GRIE and GCCE meet NYC
+
+Recorded 11 September 2026. Code: `research/drishti_research/nyc_grie.py`,
+`nyc_routing.py`; backend `services/grie.ts`, `riskSignals.ts`.
+
+### GRIE ships tuned, and one factor beats it
+
+Phase 0 left GRIE two faults to resolve: its hand-set weights cost 0.123 AUC here
+(F-18), and three of its signals are partly agency identity (F-20). The decision
+was to ship tuned weights and report the hand-set model as the finding. The
+choice between candidates was written into `nyc_grie.py` before it ran:
+
+1. no candidate with a factor at its saturation cap for over half the panel — a
+   factor reading 100/100 for most units says nothing in an explanation, and
+   NOIDA's open-load cap of 25 sits at or below 76% of NYC unit-months;
+2. highest mean within-agency AUC, because the register compares an agency's
+   boards with each other and pooled AUC rewards sorting agencies (F-20);
+3. among those within 0.005 of the best, the one with fewer parameters.
+
+| Candidate, 5 × 5-fold grouped by unit | AUC | Within agency | Ineligible? |
+|---|---|---|---|
+| Hand-set weights, NOIDA caps | 0.6743 | 0.7011 | reference |
+| Tuned weights, NOIDA caps | 0.8115 | 0.7857 | load at cap for 76% |
+| **Tuned weights, caps from NYC (p95)** | **0.8073** | **0.7830** | shipped |
+| Tuned weights, caps per agency | 0.8138 | 0.7841 | within 0.005; more parameters |
+| This month's missed deadlines alone | 0.8196 | 0.7885 | added afterwards, as a reference |
+
+Shipped against hand-set: +0.1346 [+0.1149, +0.1548], paired bootstrap.
+
+**The finding that matters more.** The tuned weights came back 0.80 on missed
+deadlines and the 0.05 floor on each of the other four. So the single factor
+was added as a reference, after the fact, and it wins: the shipped model is
+−0.0125 [−0.0197, −0.0053] behind it. At 0.8196 it matches V5's best model, a
+logistic regression at 0.8189. On this panel the label is next month's
+missed-deadline rate and the target persists at AR(1) = +0.77, so what any
+model here learns is mostly that rate predicting itself. The interpretable
+versus black-box comparison is real, but on NYC it is dominated by persistence,
+and the paper should say so rather than report tuned GRIE's parity with the
+black boxes as if the five factors earned it.
+
+**F-20, resolved by measurement.** Per-agency caps did not improve within-agency
+ranking (0.7841 against 0.7830), and the shipped model holds the three
+agency-confounded factors at the floor. The register ranks within agency.
+
+**Calibration ships with it (N7).** Raw, the score's mean is 0.258 against an
+observed 0.200 (ECE 0.095); after an isotonic map fitted on out-of-fold scores,
+0.201 (ECE 0.016). The product shows the calibrated chance. Of 220 unit-months
+flagged at a calibrated chance of 50% or more with the next month on record, 172
+(78%) landed in the worst fifth — in-sample, because the shipped weights were fit
+on those months.
+
+### The backend reproduces the study, and checking it found a bug in the study
+
+The backend computes the five signals in SQL, from its own copy of the requests,
+and `npm run layer3:measure` compares every unit-month with the study's panel.
+The first comparison disagreed on the repeat signal for 608 unit-months. The SQL
+had been written from `nyc_signals.py`'s docstring; the pandas code under that
+docstring did something else. A grouped `cummin` returns NaN at a NaN position
+rather than carrying the running minimum through it, so a request filed straight
+after one still open was never a repeat, however many earlier ones had closed —
+1,153 requests (F-39). The study was fixed, not the SQL.
+
+Five more alignments were needed before the two agreed, each small, each a real
+difference in definition: deadlines read from the frozen SLA table rather than
+re-derived over placed rows only (F-44); negative durations left out of the mean,
+as everywhere else (F-45); coordinates rounded half-to-even, as numpy does, not
+away from zero, as Postgres `numeric` does (F-42); deadlines to the millisecond,
+as the product stores them — in nanoseconds Water System's 47.6333 hours fell one
+nanosecond short of 47h38m, and four requests closed on the deadline second read
+as late (F-47); and the panel written at full precision (F-41). After them, all
+2,538 unit-months agree to 1e-9. Every number in this section is from the study after those
+fixes; the V5 figures above it predate them and are left as recorded.
+
+### GCCE: there is almost nothing to route
+
+The plan's GCCE measurement was routing accuracy against NYC's assignments, and
+F-23 had already found it degenerate on our six types. The proposed fix, widening
+the slice with Noise, was measured before anything was built on it and was
+wrong: each of NYC's eight noise types goes to exactly one agency (F-43). Of the
+188 complaint types filed in Brooklyn in 2024, 184 were worked by a single
+agency. NYC's taxonomy is agency-scoped; choosing the type chooses the agency.
+
+The four shared types — Encampment, Highway Condition, Asbestos, Graffiti — are
+1.9% of requests. On them, lookup tables over intake fields only (descriptor,
+location type, channel, board) were chosen on 2024 and reported once on 2025:
+
+| Type, 2025 | Requests | Usual agency | Descriptor table |
+|---|---|---|---|
+| Encampment | 7,156 | 73.9% | 73.9% |
+| Highway Condition | 519 | 79.8% | 79.8% |
+| Asbestos | 525 | 65.0% | 100.0% |
+| Graffiti | 9,515 | 98.4% | 100.0% |
+
++1.90 points [+1.70, +2.11] overall, which passes the gate as written — and all
+of it is NYC's own descriptor naming the agency. Where the agency is genuinely
+uncertain, nothing observable at intake predicts it.
+
+### What Phase 7 decided
+
+**GCCE is reported, not run.** The four shared types were not imported; running
+the table live would reproduce NYC's menu, not improve on it.
+
+**GRIE ships tuned, with the one-factor result stated beside it.** The backend
+executes whatever spec it is given, contract-checked, so shipping the single
+factor — or retuning with a lower floor — is an export rather than a code change.
+
+**For the paper.** Two results are worth more than the ones planned. A
+hand-specified governance score is portable in form but not in coefficients
+(Phase 0), and on a real municipal panel the predictable signal is mostly
+persistence, which a one-factor rule captures as well as any model tested. And
+the routing problem GCCE was built for does not exist in NYC 311's intake: the
+taxonomy has already solved it.
+
+Data: `research/results/nyc-grie-candidates.csv`, `nyc-grie-panel.csv`,
+`nyc-routing.csv`; `backend/data/grie-spec.json`, `gcce-spec.json`.
