@@ -20,6 +20,9 @@ const badgeVariants = cva(
                 done: 'border-done/35 bg-done-soft text-done',
                 stop: 'border-stop/35 bg-stop-soft text-stop',
                 outline: 'border-line-strong bg-transparent text-ink-soft',
+                // Our added layers, and only those, so a demo can show at a
+                // glance what is this project's and what is NYC's.
+                new: 'border-new/35 bg-new-soft text-new',
             },
         },
         defaultVariants: { tone: 'neutral' },

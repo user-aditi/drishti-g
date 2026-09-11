@@ -50,6 +50,8 @@ export const FILEABLE_CHANNELS: Channel[] = ['ONLINE', 'PHONE', 'MOBILE', 'OTHER
 export const ROLE_LABEL: Record<Role, string> = {
     CITIZEN: 'Public',
     AGENT: 'Agency staff',
+    OFFICER: 'Officer',
+    SUPERVISOR: 'Supervisor',
 }
 
 /**
@@ -120,6 +122,16 @@ export const SEED_ACCOUNTS: { email: string; label: string; hint: string }[] = [
         email: 'dep.agent@synthetic.drishti.invalid',
         label: 'DEP Duty Agent',
         hint: 'Sewer and water-system conditions',
+    },
+    {
+        email: 'dot.officer.bk04@synthetic.drishti.invalid',
+        label: 'DOT Officer · BK-04',
+        hint: 'Layer 1 — answers for specific requests, issues work orders',
+    },
+    {
+        email: 'dot.supervisor@synthetic.drishti.invalid',
+        label: 'DOT Supervisor · Brooklyn',
+        hint: 'Layer 1 — assigns requests to named officers',
     },
 ]
 

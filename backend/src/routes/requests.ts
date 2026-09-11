@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma.js'
 import { authenticate, requireAgent } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
+import { runFiledHooks } from '../services/requestHooks.js'
 import { nextSrNumber, routeRequest } from '../services/routing.js'
 import { asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
 import { publicRequest } from '../utils/serialize.js'
@@ -108,6 +109,10 @@ requestsRouter.post(
         actorId: req.user?.id ?? null,
         actorLabel: req.user?.name ?? 'anonymous',
       })
+
+      // Whatever a later layer registered, inside this transaction. This route
+      // does not know what that is — see services/requestHooks.ts.
+      await runFiledHooks(tx, request)
 
       return request
     })

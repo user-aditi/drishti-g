@@ -12,14 +12,21 @@ import { mapRouter } from './routes/map.js'
 import { requestsRouter } from './routes/requests.js'
 import { systemRouter } from './routes/system.js'
 import { taxonomyRouter } from './routes/taxonomy.js'
+import { officerRouter } from './routes/officer.js'
+import { supervisorRouter } from './routes/supervisor.js'
+import { workOrdersRouter } from './routes/workOrders.js'
+import { assignOnFiling } from './services/assignment.js'
+import { onFiled } from './services/requestHooks.js'
 
 /**
- * Layer 0's entire surface.
+ * Where the layers are composed — the one file allowed to know about all of
+ * them.
  *
- * Eight routers, and nothing that NYC 311 does not itself do. There is no
- * officer desk, no escalation register and no risk endpoint, because a baseline
- * that has quietly borrowed one of our own concepts cannot serve as the control
- * every later layer is measured against.
+ * Layer 0 is the first block of routers: nothing NYC 311 does not itself do, and
+ * no reference to anything this project adds, so it can serve as the control
+ * every later layer is measured against. Layer 1 follows, in its own routers,
+ * and attaches to the baseline in exactly one place — the filing hook below.
+ * Delete the Layer 1 block and the baseline is back, unmodified.
  */
 export function createApp(): Express {
   const app = express()
@@ -39,6 +46,14 @@ export function createApp(): Express {
   app.use(`${api}/boards`, boardsRouter)
   app.use(`${api}/map`, mapRouter)
   app.use(`${api}/audit`, auditRouter)
+
+  // ---- Layer 1: officer identity. Ours, not NYC's. -------------------------
+  // Every new request leaves its filing transaction with an accountable
+  // officer, when one is posted to its board or borough.
+  onFiled('layer1:assign-on-filing', assignOnFiling)
+  app.use(`${api}/officer`, officerRouter)
+  app.use(`${api}/work-orders`, workOrdersRouter)
+  app.use(api, supervisorRouter)
 
   app.get('/', (_req, res) => {
     res.json({

@@ -71,3 +71,10 @@ export const requireCitizen = requireRole(Role.CITIZEN)
  * handler filters on it. Per-request ownership is a Layer 1 idea.
  */
 export const requireAgent = requireRole(Role.AGENT)
+
+/*
+ * Layer 1's roles are checked with `requireRole(Role.OFFICER)` and
+ * `requireRole(Role.SUPERVISOR)` in Layer 1's own routers, not given named
+ * guards here: this file is shared, and a baseline file that exported
+ * officer-shaped helpers would be a baseline that knows officers exist (N5).
+ */

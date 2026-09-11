@@ -1,4 +1,4 @@
-// DRISHTI-G data model — Layer 0, a NYC 311 replica.
+// DRISHTI-G data model — Layer 0, a NYC 311 replica, and Layer 1 on top of it.
 //
 // This schema describes a municipal service-request system as New York City
 // actually runs one, and nothing else. There are no ranks, no sectors, no
@@ -16,6 +16,10 @@
 // What is faithfully NYC's, and what is ours, is recorded per model below. Every
 // value that NYC does not publish and we derived instead carries its provenance
 // in the schema rather than in a document nobody opens.
+//
+// Layer 1 — named officer identity — is the first thing that is ours. Its models
+// live in their own section at the end of this file, and the Layer 0 routes do
+// not reference them: the baseline has to stay measurable without them (N5).
 //
 // Postgres is the system of record.
 
@@ -36,13 +40,19 @@ datasource db {
 /// sign in; the public needs no account at all, because NYC lets anyone look up
 /// any service request by its number and so do we.
 ///
-/// There is deliberately no OFFICER, SUPERVISOR or ADMIN. Named individual
-/// ownership is a Layer 1 addition, and NYC records no case-worker identity to
-/// replicate (F-12). An agent here has agency-level accountability only, which
-/// is exactly how 311 works.
+/// CITIZEN and AGENT are Layer 0 and exist in NYC's model of 311: an agent has
+/// agency-level accountability only, which is exactly how 311 works.
+///
+/// OFFICER and SUPERVISOR are Layer 1 and do not. NYC records no case-worker
+/// identity at all (F-12), so every account holding one of these roles is
+/// synthetic and must be marked so wherever it is shown. SUPERVISOR arrives here
+/// rather than with escalation in Layer 2, because assigning a request to a
+/// named person needs someone entitled to do the assigning.
 enum Role {
   CITIZEN /// files requests, sees their own
   AGENT /// works an agency's queue; accountable as the agency, not as a person
+  OFFICER /// Layer 1: the named person accountable for specific requests
+  SUPERVISOR /// Layer 1: assigns and reassigns officers within an agency
 }
 
 /// The status values NYC publishes, kept as they are.
@@ -144,6 +154,7 @@ model OrgUnit {
 
   requests ServiceRequest[]
   users    User[]
+  postings Posting[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -170,6 +181,7 @@ model Agency {
   requestTypes RequestType[]
   requests     ServiceRequest[]
   users        User[]
+  postings     Posting[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -301,13 +313,24 @@ model ServiceRequest {
   /// comment; nothing about this flag is cosmetic.
   isImported Boolean @default(false)
 
-  citizen    User?              @relation("RequestCitizen", fields: [citizenId], references: [id], onDelete: SetNull)
-  type       RequestType        @relation(fields: [typeId], references: [id], onDelete: Restrict)
-  descriptor RequestDescriptor? @relation(fields: [descriptorId], references: [id], onDelete: SetNull)
-  agency     Agency             @relation(fields: [agencyId], references: [id], onDelete: Restrict)
-  orgUnit    OrgUnit?           @relation(fields: [orgUnitId], references: [id], onDelete: SetNull)
+  /// Layer 1 — ours, not NYC's. The one person accountable for this request
+  /// while it is open. Set by the posting rule or a supervisor, never imported:
+  /// NYC publishes no owner, and backdating one onto a historical row would be
+  /// inventing who worked it. `assignedAt` is when *this system* made the
+  /// assignment, in real time, which is why it can be years after `createdAt`.
+  assignedOfficerId Int?
+  assignedAt        DateTime?
 
-  history RequestStatusHistory[]
+  citizen         User?              @relation("RequestCitizen", fields: [citizenId], references: [id], onDelete: SetNull)
+  type            RequestType        @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  descriptor      RequestDescriptor? @relation(fields: [descriptorId], references: [id], onDelete: SetNull)
+  agency          Agency             @relation(fields: [agencyId], references: [id], onDelete: Restrict)
+  orgUnit         OrgUnit?           @relation(fields: [orgUnitId], references: [id], onDelete: SetNull)
+  assignedOfficer User?              @relation("RequestOfficer", fields: [assignedOfficerId], references: [id], onDelete: Restrict)
+
+  history     RequestStatusHistory[]
+  assignments Assignment[]
+  workOrders  WorkOrder[]
 
   updatedAt DateTime @updatedAt
 
@@ -319,6 +342,8 @@ model ServiceRequest {
   @@index([citizenId])
   @@index([status, slaDueAt])
   @@index([createdAt])
+  /// An officer's desk: their open requests, most urgent first.
+  @@index([assignedOfficerId, status, slaDueAt])
   @@map("service_requests")
 }
 
@@ -385,6 +410,13 @@ model User {
   transitions RequestStatusHistory[]
   auditEvents AuditEvent[]
 
+  // Layer 1
+  postings            Posting[]
+  assignedRequests    ServiceRequest[] @relation("RequestOfficer")
+  assignmentsReceived Assignment[]     @relation("AssignmentOfficer")
+  assignmentsMade     Assignment[]     @relation("AssignmentBy")
+  workOrdersIssued    WorkOrder[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -445,4 +477,109 @@ model AuditEvent {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_events")
+}
+
+// ===========================================================================
+// LAYER 1 — officer identity. Ours, not NYC's.
+// ===========================================================================
+//
+// Nothing below this line exists in NYC 311. It is the first layer this project
+// adds, and it is measured only by what can be observed honestly: whether every
+// open request has exactly one accountable person, and how long this system
+// takes to make an assignment. It is *not* measured by any change in resolution
+// time, because NYC records no case-worker identity to replay against (F-12),
+// and a simulated officer would be exactly the invented behaviour the rebuild
+// exists to remove.
+
+/// Where an officer or supervisor sits: one agency, one unit.
+///
+/// The unit is a community board for an officer who works one, or the borough
+/// for a duty officer who catches what no board holds — 180 open requests have
+/// no board at all, 170 of them DOT's, and "every open request has exactly one
+/// accountable person" has to include them. Rank is deliberately absent: a chain
+/// of command is what escalation walks, and that is Layer 2.
+model Posting {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  agencyId  Int
+  orgUnitId Int
+  startedAt DateTime  @default(now())
+  /// Set on transfer. Ended postings keep their history and stop receiving work.
+  endedAt   DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  agency  Agency  @relation(fields: [agencyId], references: [id], onDelete: Restrict)
+  orgUnit OrgUnit @relation(fields: [orgUnitId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agencyId, orgUnitId, endedAt])
+  @@index([userId, endedAt])
+  @@map("postings")
+}
+
+/// Who decided an assignment.
+enum AssignmentSource {
+  POSTING_RULE /// the officer posted to the request's board, chosen by load
+  SUPERVISOR /// a supervisor picked the officer by hand
+}
+
+/// Every assignment this system made, kept rather than overwritten.
+///
+/// `ServiceRequest.assignedOfficerId` answers "who holds it now"; this table
+/// answers "who held it, from when, and who decided" — which is what assignment
+/// latency, one of Layer 1's two honest measures, is computed from.
+model Assignment {
+  id           Int              @id @default(autoincrement())
+  requestId    Int
+  officerId    Int
+  /// Null when the posting rule assigned it rather than a person.
+  assignedById Int?
+  source       AssignmentSource
+  /// Real time: this is an event in our system, not an observation of NYC's.
+  at           DateTime
+
+  request    ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  officer    User           @relation("AssignmentOfficer", fields: [officerId], references: [id], onDelete: Restrict)
+  assignedBy User?          @relation("AssignmentBy", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([requestId, at])
+  @@index([officerId, at])
+  @@map("assignments")
+}
+
+/// A job handed to somebody with no account.
+///
+/// Field labour has no login here and never will: modelling rotating crews as
+/// users with passwords would be a fiction, and the first crew change would
+/// break it. So a job is addressed by a short code — printed, sent as a link, or
+/// shown as a QR — and the code is the whole credential. It expires, it reveals
+/// only what someone standing at the site would already know, and it can do one
+/// thing: report the work done.
+model WorkOrder {
+  id             Int       @id @default(autoincrement())
+  requestId      Int
+  /// The officer who issued it and answers for the outcome.
+  issuedById     Int
+  /// e.g. "K7M2-4QX9", from an alphabet with no look-alike characters.
+  code           String    @unique
+  instructions   String?
+  issuedAt       DateTime  @default(now())
+  expiresAt      DateTime
+  completedAt    DateTime?
+  completionNote String?
+  cancelledAt    DateTime?
+
+  request  ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  issuedBy User           @relation(fields: [issuedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([requestId])
+  @@index([issuedById, completedAt])
+  @@map("work_orders")
 }

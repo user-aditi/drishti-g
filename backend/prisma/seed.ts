@@ -253,6 +253,84 @@ async function seedUsers(agencies: Map<string, number>, homeBoardId: number) {
   return accounts.length
 }
 
+/**
+ * Layer 1's people: an officer for every board of every agency, a duty officer
+ * per agency for the borough, and a supervisor per agency.
+ *
+ * Named for the post and never given a human name. NYC records no case-worker
+ * identity (F-12), so there is no real person behind any of these, and a
+ * plausible invented name is exactly how a synthetic record starts passing for
+ * a real one. "DOT Officer · BK-04" cannot be mistaken for anybody.
+ *
+ * The borough duty officer exists because 180 open requests have no board, 170
+ * of them DOT's; without one, "every open request has exactly one accountable
+ * person" would fail for want of a map coordinate. Idempotent like the rest of
+ * the seed: users upsert on email, and a posting is created only if that exact
+ * one is not already active.
+ */
+async function seedLayer1(agencies: Map<string, number>) {
+  const passwordHash = await hashPassword(SEED_PASSWORD)
+  const units = await prisma.orgUnit.findMany({ select: { id: true, code: true, depth: true } })
+  const borough = units.find((u) => u.depth === 0)
+  if (!borough) throw new Error('The borough org unit was not created')
+  const boards = units.filter((u) => u.depth === 1).sort((a, b) => a.code.localeCompare(b.code))
+
+  let users = 0
+  let postings = 0
+  for (const agency of AGENCIES) {
+    const agencyId = agencies.get(agency.code)
+    if (agencyId === undefined) throw new Error(`Agency ${agency.code} was not created`)
+    const prefix = agency.code.toLowerCase()
+    const posts = [
+      {
+        email: `${prefix}.supervisor@${SYNTHETIC_DOMAIN}`,
+        name: `${agency.code} Supervisor · Brooklyn`,
+        role: Role.SUPERVISOR,
+        unitId: borough.id,
+      },
+      {
+        email: `${prefix}.officer.bk@${SYNTHETIC_DOMAIN}`,
+        name: `${agency.code} Duty Officer · Brooklyn`,
+        role: Role.OFFICER,
+        unitId: borough.id,
+      },
+      ...boards.map((board) => ({
+        email: `${prefix}.officer.${board.code.toLowerCase().replace('-', '')}@${SYNTHETIC_DOMAIN}`,
+        name: `${agency.code} Officer · ${board.code}`,
+        role: Role.OFFICER,
+        unitId: board.id,
+      })),
+    ]
+
+    for (const post of posts) {
+      const user = await prisma.user.upsert({
+        where: { email: post.email },
+        create: {
+          email: post.email,
+          name: post.name,
+          role: post.role,
+          agencyId,
+          orgUnitId: null,
+          passwordHash,
+          isSynthetic: true,
+        },
+        update: { name: post.name, role: post.role, agencyId, isSynthetic: true },
+      })
+      users++
+
+      const active = await prisma.posting.findFirst({
+        where: { userId: user.id, agencyId, orgUnitId: post.unitId, endedAt: null },
+        select: { id: true },
+      })
+      if (!active) {
+        await prisma.posting.create({ data: { userId: user.id, agencyId, orgUnitId: post.unitId } })
+        postings++
+      }
+    }
+  }
+  return { users, postings }
+}
+
 async function main() {
   const agencies = await seedAgencies()
   const tree = await seedOrgTree()
@@ -263,6 +341,7 @@ async function main() {
   const homeBoard = tree.boards.get(7)
   if (homeBoard === undefined) throw new Error('Community Board 7 was not created')
   const users = await seedUsers(agencies, homeBoard)
+  const layer1 = await seedLayer1(agencies)
 
   // The importer creates these from the corpus; the seed only reports them, so
   // that running the seed after an import reads as a no-op rather than a loss.
@@ -274,6 +353,7 @@ async function main() {
   console.log(`  org units         ${tree.boards.size + 1}  (1 borough, ${tree.boards.size} community boards)`)
   console.log(`  request types     ${types}  (SLA read from research/data/nyc/sla-table.csv)`)
   console.log(`  users             ${users}  (all synthetic, @${SYNTHETIC_DOMAIN}, password: ${SEED_PASSWORD})`)
+  console.log(`  layer 1 staff     ${layer1.users}  (officers and supervisors, all synthetic; ${layer1.postings} new postings)`)
   console.log(`  descriptors       ${descriptors}  (created by the importer, left alone here)`)
   console.log(`  service requests  ${requests}  (created by the importer, left alone here)`)
 }

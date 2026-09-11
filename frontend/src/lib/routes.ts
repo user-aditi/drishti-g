@@ -11,5 +11,15 @@ import type { Role } from '@/types'
  * The public and the people working the queue want different first screens,
  * and neither of them wants a dashboard.
  */
-export const homeFor = (role: Role): string =>
-    role === 'AGENT' ? '/agency/queue' : '/my/requests'
+export const homeFor = (role: Role): string => {
+    switch (role) {
+        case 'AGENT':
+            return '/agency/queue'
+        case 'OFFICER':
+            return '/officer/desk'
+        case 'SUPERVISOR':
+            return '/supervisor/assign'
+        default:
+            return '/my/requests'
+    }
+}

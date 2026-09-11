@@ -21,8 +21,12 @@ export type RequestStatus =
 /** How the request reached 311. */
 export type Channel = 'PHONE' | 'ONLINE' | 'MOBILE' | 'OTHER' | 'UNKNOWN'
 
-/** Two roles: the public, and the people who work the queue. */
-export type Role = 'CITIZEN' | 'AGENT'
+/**
+ * CITIZEN and AGENT are Layer 0 — NYC's own model of 311. OFFICER and SUPERVISOR
+ * are Layer 1 and ours: NYC records no case-worker identity, so every account
+ * holding one is synthetic and is shown as such.
+ */
+export type Role = 'CITIZEN' | 'AGENT' | 'OFFICER' | 'SUPERVISOR'
 
 export interface Agency {
     id: number

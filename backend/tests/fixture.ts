@@ -48,7 +48,11 @@ export async function reset() {
   await prisma.$transaction([
     prisma.requestStatusHistory.deleteMany(),
     prisma.auditEvent.deleteMany(),
+    // Layer 1 rows reference users with `Restrict`, so they go before users do.
+    prisma.workOrder.deleteMany(),
+    prisma.assignment.deleteMany(),
     prisma.serviceRequest.deleteMany(),
+    prisma.posting.deleteMany(),
     prisma.requestDescriptor.deleteMany(),
     prisma.requestType.deleteMany(),
     prisma.user.deleteMany(),

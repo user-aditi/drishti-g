@@ -33,12 +33,12 @@ lives.
 | Layer | Adds | Measured against the baseline by |
 |---|---|---|
 | **0** | The replica: intake, routing, agency queues, status, geography | — it *is* the baseline |
-| 1 | Officer identity, work orders | Does named accountability change resolution time? |
+| 1 | Officer identity, work orders | Coverage and assignment latency — see below for why not resolution time |
 | 2 | Escalation on SLA breach | Do our escalations coincide with what NYC actually closed late? |
 | 3 | GCCE routing, GRIE risk radar | Routing accuracy against real agency assignment; do high-scored boards fail next month? |
 | 4 | Photo verification | Scoped to potholes and garbage, the only categories with real imagery |
 
-Only Layer 0 is built. Everything above it is specified and not yet written.
+Layers 0 and 1 are built. Everything above them is specified and not yet written.
 
 ## Quick start
 
@@ -196,6 +196,61 @@ append takes a Postgres advisory lock (410 duplicated hashes and 485 broken link
 on one run without it), and `AuditEvent.actorId` is `onDelete: Restrict` rather
 than `SetNull`, because nulling a hashed field rewrites the content of every
 entry a deleted user ever produced (273 entries destroyed that way).
+
+## What Layer 1 adds — officer identity
+
+NYC 311 holds an *agency* accountable for a request and records no person at all
+— no case worker, no crew, no field worker. Layer 1 is the first thing that is
+ours: one named officer answering for each open request, supervisors who assign
+and reassign, and work orders that send a job to a crew with no account.
+
+| Route | Who | What |
+|---|---|---|
+| `/officer/desk` | Officer | The requests this officer answers for, most urgent first |
+| `/officer/sr/[srNumber]` | Officer, supervisor | The Layer 0 record, plus who answers for it and the jobs sent out — with a QR |
+| `/supervisor/assign` | Supervisor | Unassigned requests, reassignment by SR number, and each officer's load |
+| `/w/[code]` | A crew, no login | The job, and one button: it's done. The code is the whole credential |
+
+Every Layer 1 screen carries a purple **Layer 1 · ours** mark, and every officer
+and supervisor a **synthetic** badge. There are 60 of them, named for their post
+("DOT Officer · BK-04") and never given a human name. NYC records no one to model
+them on, and a plausible invented name is how a synthetic record starts passing
+for a real one.
+
+**How a request gets an owner.** It goes to the officer posted to its agency and
+board, or to the lighter-loaded officer if a board has two. A request with no
+board goes to the agency's borough duty officer. That matters: 180 open requests
+have no board, 170 of them DOT's. New filings are assigned inside their own
+filing transaction, and the 6,315 requests already open were given owners once
+by `npm run layer1:assign`. Assignments are stamped in real time, so a 2022
+request shows a 2026 assignment date. The system claims nobody held it in 2022,
+because NYC records no owner to carry over.
+
+**A crew's "done" does not close the request.** It's recorded against the work
+order and shown to the officer, who closes the request through the ordinary
+status change. "The crew says it's done" and "it's done" are different claims,
+and nothing in Layer 1 can check the second. That's Layer 4's photo verification.
+
+**How it's measured, and how it isn't.** The build plan proposed asking whether
+named accountability changes resolution time on replayed requests. That can't
+be done honestly here. NYC records no case-worker identity, so there's no real
+officer behaviour to replay, and a simulated officer would be exactly the kind
+of invented behaviour this rebuild exists to remove. So Layer 1 is presented as
+a capability, and `npm run layer1:measure` checks four facts about this system:
+
+| Check | Result |
+|---|---|
+| Coverage: every open request has exactly one accountable, correctly posted officer | **6,318 of 6,318 (100%)** |
+| Latency: filing to first assignment, for requests filed since Layer 1 went live | **p50 288ms, p95 348ms** (3 filings) |
+| Baseline: no Layer 0 source file references a Layer 1 concept | **clean** across 12 files |
+| Chain: the audit chain verifies with Layer 1's entries in it | **6,549 entries** |
+
+**Layer 0 stays the baseline.** Layer 1 attaches in exactly one place, a filing
+hook registered in `app.ts`, and adds nothing to what Layer 0 returns, writes or
+records. An assignment is not a status change, so it never enters the status
+history that feeds the process-mining log. Delete the Layer 1 block in `app.ts`
+and the baseline is back, unmodified. `npm run verify:import` still passes all
+six checks after the backfill.
 
 ## Proving it still works
 
