@@ -9,6 +9,7 @@ import * as audit from '../services/audit.js'
 import { nextSrNumber, routeRequest } from '../services/routing.js'
 import { asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
 import { publicRequest } from '../utils/serialize.js'
+import { invalidateBoards, warmBoards } from './boards.js'
 
 export const requestsRouter: Router = Router()
 
@@ -111,6 +112,10 @@ requestsRouter.post(
       return request
     })
 
+    // A new request changes its board's volume and backlog. The rollup is
+    // cached (see routes/boards.ts), so tell it, and let it recompute now.
+    invalidateBoards()
+    warmBoards()
     res.status(201).json(publicRequest(created, referenceDate()))
   }),
 )
@@ -314,6 +319,10 @@ requestsRouter.patch(
       return request
     })
 
+    // Closing or reopening moves a request between open and closed on its
+    // board, so the cached rollup is now wrong until it recomputes.
+    invalidateBoards()
+    warmBoards()
     res.json(publicRequest(updated, referenceDate()))
   }),
 )

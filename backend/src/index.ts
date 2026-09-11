@@ -3,6 +3,7 @@ import { env } from './config/env.js'
 import { referenceDate } from './config/systemClock.js'
 import { createLogger } from './lib/logger.js'
 import { prisma } from './lib/prisma.js'
+import { warmBoards } from './routes/boards.js'
 
 const log = createLogger('server')
 
@@ -26,6 +27,9 @@ const server = app.listen(env.PORT, () => {
    */
   if (env.NODE_ENV !== 'test') {
     log.info(`  system reference date: ${referenceDate().toISOString()}`)
+    // The board rollup is an aggregate over the whole corpus; computing it now
+    // means the first person to open the boards register does not pay for it.
+    warmBoards()
   }
 
   /*

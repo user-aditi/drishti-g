@@ -107,6 +107,31 @@ describe('the board register', () => {
     const res = await request(app).get(`${api}/boards`).expect(200)
     expect(res.body.some((b: { code: string }) => b.code === 'BK')).toBe(false)
   })
+
+  /**
+   * The rollup is cached, because it is an aggregate over the whole corpus and
+   * the corpus barely moves. The failure a cache invites is the one that matters
+   * most here: an agent closes a request and the board register goes on counting
+   * it open. A write through the API must be visible on the very next read.
+   */
+  it('reflects a status change on the next read rather than serving the cached rollup', async () => {
+    const before = await request(app).get(`${api}/boards`).expect(200)
+    const board1Before = before.body.find((b: { code: string }) => b.code === 'BK-01')
+    expect(board1Before.open).toBe(1)
+
+    const open = await prisma.serviceRequest.findUniqueOrThrow({ where: { srNumber: 'NYC-40' } })
+    await request(app)
+      .patch(`${api}/requests/${open.id}/status`)
+      .set('Authorization', agent())
+      .send({ status: 'CLOSED' })
+      .expect(200)
+
+    const after = await request(app).get(`${api}/boards`).expect(200)
+    const board1After = after.body.find((b: { code: string }) => b.code === 'BK-01')
+    expect(board1After.open).toBe(0)
+    expect(board1After.closed).toBe(4)
+    expect(board1After.overdue).toBe(0)
+  })
 })
 
 describe('the map', () => {

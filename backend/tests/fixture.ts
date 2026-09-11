@@ -14,6 +14,7 @@
  *   └── Community Board 2 (depth 1)
  */
 import { PrismaClient, Role, SlaSource } from '@prisma/client'
+import { invalidateBoards } from '../src/routes/boards.js'
 
 export const prisma = new PrismaClient()
 
@@ -41,6 +42,9 @@ export interface Fixture {
  * silently rewrite hashed audit content, so deleting users first would throw.
  */
 export async function reset() {
+  // The board rollup is cached in-process, and these tests write rows
+  // directly rather than through the API that would invalidate it.
+  invalidateBoards()
   await prisma.$transaction([
     prisma.requestStatusHistory.deleteMany(),
     prisma.auditEvent.deleteMany(),
