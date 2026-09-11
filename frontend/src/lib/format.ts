@@ -124,9 +124,9 @@ export function relativeTime(iso: string | null | undefined, now = Date.now()): 
  *
  * A closed request's figure is closed_date minus filing, unless that comes out
  * negative, in which case the record is inconsistent and the answer is null — a
- * dash on screen, not a negative number and not a guess. An open request filed
- * after the reference date (anything filed through this replica, F-24) is also
- * null: its age as at the snapshot is not a quantity that exists.
+ * dash on screen, not a negative number and not a guess. Callers pass the real
+ * clock for requests filed through this replica, which are live, and the
+ * snapshot for NYC's imported rows (see observedNow in the API).
  */
 export function ageHours(
     createdAt: string,

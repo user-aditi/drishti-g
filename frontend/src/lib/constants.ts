@@ -52,6 +52,7 @@ export const ROLE_LABEL: Record<Role, string> = {
     AGENT: 'Agency staff',
     OFFICER: 'Officer',
     SUPERVISOR: 'Supervisor',
+    COMMISSIONER: 'Commissioner',
 }
 
 /**
@@ -132,6 +133,11 @@ export const SEED_ACCOUNTS: { email: string; label: string; hint: string }[] = [
         email: 'dot.supervisor@synthetic.drishti.invalid',
         label: 'DOT Supervisor · Brooklyn',
         hint: 'Layer 1 — assigns requests to named officers',
+    },
+    {
+        email: 'dot.commissioner@synthetic.drishti.invalid',
+        label: 'DOT Borough Commissioner · Brooklyn',
+        hint: 'Layer 2 — the top of the escalation ladder',
     },
 ]
 

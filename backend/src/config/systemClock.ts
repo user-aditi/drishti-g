@@ -72,3 +72,21 @@ export function referenceDate(): Date {
 export function isOverdue(slaDueAt: Date | null | undefined, now: Date = referenceDate()): boolean {
   return slaDueAt != null && slaDueAt.getTime() < now.getTime()
 }
+
+/**
+ * "Now" for one record: the moment that record was observed.
+ *
+ * NYC's rows were observed once, at the snapshot, and are judged there. A
+ * request filed through this replica is observed continuously — it is live — and
+ * is judged against the real clock. The first version judged everything at the
+ * snapshot, so a request filed here, whose deadline falls days after it, could
+ * never be overdue and could never escalate (F-24): Layer 2's sweeper would have
+ * run for ever and done nothing.
+ *
+ * NYC's rows lose nothing by this. Every open imported request is already past
+ * its deadline at the snapshot, so it is overdue under either clock.
+ */
+export function observedNow(isImported: boolean, reference: Date = referenceDate()): Date {
+  return isImported ? reference : new Date()
+}
+

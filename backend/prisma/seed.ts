@@ -282,6 +282,14 @@ async function seedLayer1(agencies: Map<string, number>) {
     if (agencyId === undefined) throw new Error(`Agency ${agency.code} was not created`)
     const prefix = agency.code.toLowerCase()
     const posts = [
+      // Layer 2: the top of the escalation ladder. Synthetic like every other
+      // post here, and named for the post rather than for a person.
+      {
+        email: `${prefix}.commissioner@${SYNTHETIC_DOMAIN}`,
+        name: `${agency.code} Borough Commissioner · Brooklyn`,
+        role: Role.COMMISSIONER,
+        unitId: borough.id,
+      },
       {
         email: `${prefix}.supervisor@${SYNTHETIC_DOMAIN}`,
         name: `${agency.code} Supervisor · Brooklyn`,
@@ -353,7 +361,7 @@ async function main() {
   console.log(`  org units         ${tree.boards.size + 1}  (1 borough, ${tree.boards.size} community boards)`)
   console.log(`  request types     ${types}  (SLA read from research/data/nyc/sla-table.csv)`)
   console.log(`  users             ${users}  (all synthetic, @${SYNTHETIC_DOMAIN}, password: ${SEED_PASSWORD})`)
-  console.log(`  layer 1 staff     ${layer1.users}  (officers and supervisors, all synthetic; ${layer1.postings} new postings)`)
+  console.log(`  layer 1 staff     ${layer1.users}  (officers, supervisors and commissioners, all synthetic; ${layer1.postings} new postings)`)
   console.log(`  descriptors       ${descriptors}  (created by the importer, left alone here)`)
   console.log(`  service requests  ${requests}  (created by the importer, left alone here)`)
 }

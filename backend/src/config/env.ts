@@ -32,6 +32,8 @@ const schema = z.object({
   PUBLIC_URL: z.string().default('http://localhost:4000'),
   /// Where the browser app lives.
   APP_URL: z.string().default('http://localhost:3000'),
+  /** Layer 2: how often the escalation sweep looks for breached live requests. */
+  ESCALATION_SWEEP_MS: z.coerce.number().int().min(10_000).default(300_000),
 
   /*
    * Where the system believes it is standing in time.

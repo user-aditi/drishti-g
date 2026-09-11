@@ -28,7 +28,9 @@ export function RequestDetail({
     /** Status controls, on the agent's view only. */
     actions?: React.ReactNode
 }) {
-    const now = asOf(referenceDate)
+    // Judged at the moment the record was observed: the snapshot for NYC's
+    // rows, the real clock for requests filed through this replica.
+    const now = request.isImported ? asOf(referenceDate) : Date.now()
     const stillOpen = request.status !== 'CLOSED'
     const overdue = request.isOverdue && stillOpen
     const deadline = deadlineLabel(request.slaDueAt, stillOpen, now)
@@ -117,7 +119,7 @@ export function RequestDetail({
                                 {request.slaDueAt ? formatDateTime(request.slaDueAt) : EMPTY}
                             </span>
                             <span className="ml-2 text-sm text-ink-soft">{deadline.text}</span>
-                            {stillOpen && (
+                            {stillOpen && request.isImported && (
                                 <span className="ml-2">
                                     <ReferenceDateInline referenceDate={referenceDate} />
                                 </span>

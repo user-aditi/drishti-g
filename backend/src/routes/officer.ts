@@ -56,7 +56,10 @@ officerRouter.get(
         where: {
           assignedOfficerId: req.user!.id,
           status: { not: RequestStatus.CLOSED },
-          slaDueAt: { lt: now },
+          OR: [
+            { isImported: true, slaDueAt: { lt: now } },
+            { isImported: false, slaDueAt: { lt: new Date() } },
+          ],
         },
       }),
     ])

@@ -21,6 +21,9 @@
 // live in their own section at the end of this file, and the Layer 0 routes do
 // not reference them: the baseline has to stay measurable without them (N5).
 //
+// Layer 2 — escalation — follows the same rule one rung up: Layer 1 does not
+// reference it, and Layer 0 references neither.
+//
 // Postgres is the system of record.
 
 generator client {
@@ -53,6 +56,7 @@ enum Role {
   AGENT /// works an agency's queue; accountable as the agency, not as a person
   OFFICER /// Layer 1: the named person accountable for specific requests
   SUPERVISOR /// Layer 1: assigns and reassigns officers within an agency
+  COMMISSIONER /// Layer 2: heads an agency in the borough; the top of the escalation ladder
 }
 
 /// The status values NYC publishes, kept as they are.
@@ -321,6 +325,12 @@ model ServiceRequest {
   assignedOfficerId Int?
   assignedAt        DateTime?
 
+  /// Layer 2 — how far up the ladder this request has gone: 0 with its officer,
+  /// 1 with the agency's supervisor, 2 with the borough commissioner. NYC has no
+  /// escalation at all (F-12), so every imported row starts at 0 and stays there
+  /// unless this system acts on it — its absence in the baseline is the point.
+  escalationLevel Int @default(0)
+
   citizen         User?              @relation("RequestCitizen", fields: [citizenId], references: [id], onDelete: SetNull)
   type            RequestType        @relation(fields: [typeId], references: [id], onDelete: Restrict)
   descriptor      RequestDescriptor? @relation(fields: [descriptorId], references: [id], onDelete: SetNull)
@@ -331,6 +341,7 @@ model ServiceRequest {
   history     RequestStatusHistory[]
   assignments Assignment[]
   workOrders  WorkOrder[]
+  escalations Escalation[]
 
   updatedAt DateTime @updatedAt
 
@@ -344,6 +355,8 @@ model ServiceRequest {
   @@index([createdAt])
   /// An officer's desk: their open requests, most urgent first.
   @@index([assignedOfficerId, status, slaDueAt])
+  /// The escalation sweep: live, open, past its deadline.
+  @@index([isImported, status, slaDueAt])
   @@map("service_requests")
 }
 
@@ -416,6 +429,10 @@ model User {
   assignmentsReceived Assignment[]     @relation("AssignmentOfficer")
   assignmentsMade     Assignment[]     @relation("AssignmentBy")
   workOrdersIssued    WorkOrder[]
+
+  // Layer 2
+  escalationsRaised   Escalation[]     @relation("EscalationBy")
+  escalationsReceived Escalation[]     @relation("EscalationTo")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -582,4 +599,61 @@ model WorkOrder {
   @@index([requestId])
   @@index([issuedById, completedAt])
   @@map("work_orders")
+}
+
+// ===========================================================================
+// LAYER 2 — escalation. Ours, not NYC's.
+// ===========================================================================
+//
+// NYC 311 records no escalation: a request sits with its agency until the agency
+// closes it. Layer 2 adds a ladder within each agency — the accountable officer,
+// then the agency's supervisor, then the borough commissioner — and a sweep that
+// climbs it when a request passes its derived deadline.
+//
+// The sweep acts only on live requests: those filed through this system, and
+// imported ones this system has since acted on. The 350,000 untouched imported
+// rows are NYC's history, every open one is already past its deadline at the
+// snapshot, and escalating them would be reacting today to delays that happened
+// years ago (I6).
+
+/// What set an escalation off.
+enum EscalationTrigger {
+  SLA_BREACH /// the sweep found the request past its deadline, or past twice its service level
+  MANUAL /// a person raised it with a reason, possibly before any breach
+}
+
+/// One rung climbed, kept rather than overwritten.
+///
+/// `ServiceRequest.escalationLevel` answers "how high is it now"; this answers
+/// how it got there, when, why, and who it reached. The unique pair is what makes
+/// the sweep safe to run twice at once: a rung can be reached exactly once, and a
+/// second writer is refused by the database rather than trusted to check first.
+///
+/// Escalation does not move ownership. The officer still answers for the request;
+/// escalating pulls someone more senior in beside them.
+model Escalation {
+  id         Int               @id @default(autoincrement())
+  requestId  Int
+  fromLevel  Int
+  toLevel    Int
+  trigger    EscalationTrigger
+  reason     String
+  /// Null when the sweep raised it rather than a person.
+  raisedById Int?
+  /// The senior person it reached. Null only if nobody holds that rung in the
+  /// agency — which is itself worth seeing, so the escalation is still recorded.
+  toUserId   Int?
+  /// Real time: an escalation is an event in this system.
+  at         DateTime
+
+  request  ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  raisedBy User?          @relation("EscalationBy", fields: [raisedById], references: [id], onDelete: Restrict)
+  toUser   User?          @relation("EscalationTo", fields: [toUserId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@unique([requestId, toLevel])
+  @@index([toUserId, at])
+  @@index([at])
+  @@map("escalations")
 }

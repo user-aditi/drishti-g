@@ -19,6 +19,8 @@ export const homeFor = (role: Role): string => {
             return '/officer/desk'
         case 'SUPERVISOR':
             return '/supervisor/assign'
+        case 'COMMISSIONER':
+            return '/supervisor/escalations'
         default:
             return '/my/requests'
     }

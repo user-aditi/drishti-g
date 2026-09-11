@@ -10,6 +10,9 @@ import { ApiError, messageFrom } from '@/lib/api-error'
 import { homeFor, requireUser } from '@/lib/auth'
 import { formatDateTime, normaliseSrNumber } from '@/lib/format'
 import { getOfficerRequest } from '@/lib/layer1-server'
+import { EscalationPanel } from '@/components/layer2/escalation-panel'
+import { getRequestEscalations } from '@/lib/layer2-server'
+import type { RequestEscalations } from '@/types/layer2'
 import type { Layer1Detail } from '@/types/layer1'
 
 export const dynamic = 'force-dynamic'
@@ -50,6 +53,15 @@ export default async function OfficerRequestPage({ params }: { params: { srNumbe
         )
     }
 
+    // Layer 2's view of the same request. A failure here hides the panel rather
+    // than the record: the request is still readable without its ladder.
+    let escalations: RequestEscalations | null = null
+    try {
+        escalations = await getRequestEscalations(srNumber)
+    } catch {
+        escalations = null
+    }
+
     const isHolder = user.role === 'OFFICER' && request.accountable?.id === user.id
     const open = request.status !== 'CLOSED'
 
@@ -60,6 +72,7 @@ export default async function OfficerRequestPage({ params }: { params: { srNumbe
                 request={request}
                 referenceDate={new Date().toISOString()}
                 actions={
+                    <div className="flex flex-col gap-6">
                     <Panel>
                         <PanelHeader>
                             <PanelTitle>
@@ -99,6 +112,8 @@ export default async function OfficerRequestPage({ params }: { params: { srNumbe
                             </div>
                         </PanelBody>
                     </Panel>
+                    {escalations && <EscalationPanel data={escalations} />}
+                    </div>
                 }
             />
         </PageShell>

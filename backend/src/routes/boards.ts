@@ -67,7 +67,8 @@ async function compute(now: Date): Promise<BoardFigures[]> {
                COUNT(*) FILTER (WHERE r.status <> 'CLOSED')     AS open,
                COUNT(*) FILTER (WHERE r.status = 'CLOSED')      AS closed,
                COUNT(*) FILTER (
-                 WHERE r.status <> 'CLOSED' AND r."slaDueAt" < ${now}
+                 WHERE r.status <> 'CLOSED' AND r."slaDueAt" <
+                   CASE WHEN r."isImported" THEN ${now} ELSE now() END
                )                                                AS overdue,
                PERCENTILE_CONT(0.5) WITHIN GROUP (
                  ORDER BY EXTRACT(EPOCH FROM (r."closedAt" - r."createdAt")) / 3600.0

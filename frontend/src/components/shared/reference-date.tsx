@@ -41,6 +41,7 @@ export function ReferenceDate({
                 — the day these records were taken from NYC Open Data. Every deadline and
                 overdue count here is measured against it, not against today, which is why
                 most of what is still open reads as overdue: it is a historical backlog.
+                Requests filed through this replica are live, and run on today&rsquo;s clock.
             </span>
         </div>
     )

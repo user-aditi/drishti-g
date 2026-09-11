@@ -31,7 +31,12 @@ const CITIZEN_LINKS: NavLink[] = [{ href: '/my/requests', label: 'My requests' }
 
 /** Layer 1. Ours, not NYC's — the pages themselves say so. */
 const OFFICER_LINKS: NavLink[] = [{ href: '/officer/desk', label: 'My desk' }]
-const SUPERVISOR_LINKS: NavLink[] = [{ href: '/supervisor/assign', label: 'Assign' }]
+const SUPERVISOR_LINKS: NavLink[] = [
+    { href: '/supervisor/assign', label: 'Assign' },
+    { href: '/supervisor/escalations', label: 'Escalations' },
+]
+/** Layer 2. */
+const COMMISSIONER_LINKS: NavLink[] = [{ href: '/supervisor/escalations', label: 'Escalations' }]
 
 const AGENT_LINKS: NavLink[] = [
     { href: '/agency/queue', label: 'Queue' },
@@ -46,6 +51,7 @@ export function SiteHeader({ user }: { user: User | null }) {
         ...(user?.role === 'AGENT' ? AGENT_LINKS : []),
         ...(user?.role === 'OFFICER' ? OFFICER_LINKS : []),
         ...(user?.role === 'SUPERVISOR' ? SUPERVISOR_LINKS : []),
+        ...(user?.role === 'COMMISSIONER' ? COMMISSIONER_LINKS : []),
     ]
 
     return (

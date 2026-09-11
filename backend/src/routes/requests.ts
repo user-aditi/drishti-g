@@ -186,7 +186,14 @@ requestsRouter.get(
     if (q.openOnly) conditions.push({ status: { not: RequestStatus.CLOSED } })
     // Open by NYC's status, as everywhere else — see publicRequest.
     if (q.overdue) {
-      conditions.push({ slaDueAt: { lt: now }, status: { not: RequestStatus.CLOSED } })
+      // Each record judged at its own observation time — see observedNow.
+      conditions.push({
+        status: { not: RequestStatus.CLOSED },
+        OR: [
+          { isImported: true, slaDueAt: { lt: now } },
+          { isImported: false, slaDueAt: { lt: new Date() } },
+        ],
+      })
     }
     const where: Prisma.ServiceRequestWhereInput = { AND: conditions }
 

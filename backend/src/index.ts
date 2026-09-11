@@ -4,10 +4,12 @@ import { referenceDate } from './config/systemClock.js'
 import { createLogger } from './lib/logger.js'
 import { prisma } from './lib/prisma.js'
 import { warmBoards } from './routes/boards.js'
+import { startEscalationSweep } from './services/escalation.js'
 
 const log = createLogger('server')
 
 const app = createApp()
+let stopSweep: (() => void) | null = null
 
 const server = app.listen(env.PORT, () => {
   log.info(`listening on http://localhost:${env.PORT}${env.API_PREFIX}`)
@@ -30,20 +32,26 @@ const server = app.listen(env.PORT, () => {
     // The board rollup is an aggregate over the whole corpus; computing it now
     // means the first person to open the boards register does not pay for it.
     warmBoards()
+    // Layer 2's escalation sweep. Live requests only (I6).
+    stopSweep = startEscalationSweep(prisma, env.ESCALATION_SWEEP_MS, (message) =>
+      log.info(message),
+    )
   }
 
   /*
-   * No scheduler.
+   * One scheduler, and it is Layer 2's.
    *
-   * The previous system started escalation, verification and clustering sweeps
-   * here. None of them belong in Layer 0 — escalation is our concept and NYC
-   * records nothing like it — and a sweep let loose over 350,000 imported rows
-   * would enqueue work for requests New York closed years ago.
+   * Layer 0 has none: escalation is our concept and NYC records nothing like it.
+   * The sweep started above acts only on live requests — never on the 350,000
+   * untouched imported ones, every open one of which is past its deadline at the
+   * snapshot and would escalate the moment the sweep first ran, over delays New
+   * York lived through years ago.
    */
 })
 
 async function shutdown(signal: string) {
   log.info(`${signal} received, shutting down`)
+  stopSweep?.()
   server.close()
   await prisma.$disconnect()
   process.exit(0)

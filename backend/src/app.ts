@@ -15,6 +15,7 @@ import { taxonomyRouter } from './routes/taxonomy.js'
 import { officerRouter } from './routes/officer.js'
 import { supervisorRouter } from './routes/supervisor.js'
 import { workOrdersRouter } from './routes/workOrders.js'
+import { escalationsRouter } from './routes/escalations.js'
 import { assignOnFiling } from './services/assignment.js'
 import { onFiled } from './services/requestHooks.js'
 
@@ -54,6 +55,11 @@ export function createApp(): Express {
   app.use(`${api}/officer`, officerRouter)
   app.use(`${api}/work-orders`, workOrdersRouter)
   app.use(api, supervisorRouter)
+
+  // ---- Layer 2: escalation. Ours, not NYC's. --------------------------------
+  // The sweep that climbs the ladder is started in index.ts: a timer belongs to
+  // the running process, not to an app that every test file composes afresh.
+  app.use(api, escalationsRouter)
 
   app.get('/', (_req, res) => {
     res.json({

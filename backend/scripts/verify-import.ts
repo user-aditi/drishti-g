@@ -209,6 +209,33 @@ async function overdue(): Promise<Result> {
   }
 }
 
+/**
+ * One row from the source, or undefined if the source cleanly says it has none.
+ * Throws when the source does not answer cleanly after three tries.
+ */
+async function fetchSourceRow(key: string): Promise<Record<string, string> | undefined> {
+  let last = 'no attempt made'
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_000 * 2 ** attempt))
+    try {
+      const res = await fetch(`${SOCRATA}?unique_key=${key}`, { signal: AbortSignal.timeout(30_000) })
+      if (!res.ok) {
+        last = `HTTP ${res.status}`
+        continue
+      }
+      const body: unknown = await res.json()
+      if (!Array.isArray(body)) {
+        last = 'a reply that was not a list of rows'
+        continue
+      }
+      return body[0] as Record<string, string> | undefined
+    } catch (err) {
+      last = err instanceof Error ? err.message : String(err)
+    }
+  }
+  throw new Error(last)
+}
+
 async function spotCheck(): Promise<Result> {
   const total = await prisma.serviceRequest.count({ where: { isImported: true } })
   const failures: string[] = []
@@ -221,15 +248,20 @@ async function spotCheck(): Promise<Result> {
     })
     const key = ours.srNumber.replace(/^NYC-/, '')
 
+    // "Not found at source" is a claim about New York's data, so it is made only
+    // on a clean answer: a 200 carrying a JSON array with nothing in it. The first
+    // version took any reply it could index — a throttled 429, an error object —
+    // and reported the record missing; two rows that were sitting at the source
+    // failed this check that way (F-35). Anything else is retried, then reported
+    // as the source not answering, which is a different thing to be wrong about.
     let theirs: Record<string, string> | undefined
     try {
-      const res = await fetch(`${SOCRATA}?unique_key=${key}`)
-      theirs = ((await res.json()) as Record<string, string>[])[0]
+      theirs = await fetchSourceRow(key)
     } catch (err) {
       return {
         name: 'spot check',
         ok: false,
-        detail: `could not reach Socrata (${err instanceof Error ? err.message : String(err)}) — this check needs the network`,
+        detail: `Socrata did not give a usable answer for ${key} (${err instanceof Error ? err.message : String(err)}) — this check needs the network; nothing was compared`,
       }
     }
     if (!theirs) {

@@ -6,6 +6,7 @@ import type {
   ServiceRequest,
   User,
 } from '@prisma/client'
+import { observedNow } from '../config/systemClock.js'
 
 /**
  * What leaves the API, and what never does.
@@ -94,10 +95,13 @@ export function publicRequest(request: RequestWithRefs, referenceDate: Date) {
   // this rule existed the boards register counted "open" by status and
   // "overdue" by closedAt, so its overdue column was not a subset of its open
   // one (F-27). closedAt is used only for what it measures: when it closed.
+  // Judged at the moment the record was observed: NYC's rows at the snapshot,
+  // this system's own filings live, against the real clock (F-24).
+  const observedAt = observedNow(request.isImported, referenceDate)
   const isOverdue =
     dueAt !== null &&
     (request.status !== 'CLOSED'
-      ? referenceDate > dueAt
+      ? observedAt > dueAt
       : request.closedAt !== null && request.closedAt > dueAt)
 
   return {

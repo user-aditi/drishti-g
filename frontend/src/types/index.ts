@@ -26,7 +26,7 @@ export type Channel = 'PHONE' | 'ONLINE' | 'MOBILE' | 'OTHER' | 'UNKNOWN'
  * are Layer 1 and ours: NYC records no case-worker identity, so every account
  * holding one is synthetic and is shown as such.
  */
-export type Role = 'CITIZEN' | 'AGENT' | 'OFFICER' | 'SUPERVISOR'
+export type Role = 'CITIZEN' | 'AGENT' | 'OFFICER' | 'SUPERVISOR' | 'COMMISSIONER'
 
 export interface Agency {
     id: number

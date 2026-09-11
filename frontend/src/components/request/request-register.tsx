@@ -104,6 +104,9 @@ export function RequestRegister({
                         {rows.map((request) => {
                             const stillOpen = request.status !== 'CLOSED'
                             const overdue = request.isOverdue && stillOpen
+                            // NYC's rows are measured at the snapshot they were pulled
+                            // at; this system's own filings are live, and age in real time.
+                            const rowNow = request.isImported ? now : Date.now()
 
                             return (
                                 <Tr key={request.id}>
@@ -130,7 +133,7 @@ export function RequestRegister({
                                     </Td>
                                     <Td mono align="right" className="whitespace-nowrap">
                                         {formatHours(
-                                            ageHours(request.createdAt, request.closedAt, request.status, now),
+                                            ageHours(request.createdAt, request.closedAt, request.status, rowNow),
                                         )}
                                     </Td>
                                     <Td align="right" className="whitespace-nowrap">
