@@ -6,16 +6,17 @@ import { cn } from '@/lib/utils'
  * Which day this system thinks it is.
  *
  * This is not a nicety. Every "overdue" figure on every screen is a comparison
- * against a configured reference date, not against the browser's clock, because
- * the corpus ends on 2025-12-31: read against real time, all 355,430 imported
- * requests are past their deadline, every queue sorts identically and every
- * breach rate reads 100%. The alternative — shifting the imported dates forward
- * so they look recent — would destroy the seasonality the data is worth having
- * for. So the dates stay real and the observer moves.
+ * against a configured reference date, not against the browser's clock. The
+ * records are a snapshot — NYC's statuses as published on the day the corpus was
+ * pulled — and that snapshot date is the only one on which every field of every
+ * row is true at once, so it is the date the system stands on. Shifting the
+ * imported dates forward instead would destroy the seasonality the data is worth
+ * having for. So the dates stay real and the observer moves.
  *
- * The consequence is that an operator reading "3,543 overdue" is reading a
- * count taken on a particular day, and is entitled to be told which one. Any
- * agent screen that reports an overdue number shows this next to it.
+ * The consequence is that an operator reading an overdue count is reading a
+ * count taken on a particular day, and is entitled to be told which one — and,
+ * because this is a historical backlog, to be told why nearly all of it is
+ * overdue. Any agent screen that reports an overdue number shows this next to it.
  */
 export function ReferenceDate({
     referenceDate,
@@ -37,8 +38,9 @@ export function ReferenceDate({
                 {formatDate(referenceDate)}
             </time>
             <span className="text-ink-soft">
-                — every deadline and overdue count on this screen is measured against that date,
-                not against today. The published records end there.
+                — the day these records were taken from NYC Open Data. Every deadline and
+                overdue count here is measured against it, not against today, which is why
+                most of what is still open reads as overdue: it is a historical backlog.
             </span>
         </div>
     )
@@ -49,7 +51,7 @@ export function ReferenceDateInline({ referenceDate }: { referenceDate: string }
     return (
         <span
             className="mono text-sm text-ink-soft"
-            title={`Overdue is evaluated against ${formatDateTime(referenceDate)}, the system reference date, because the published corpus ends there.`}
+            title={`Overdue is evaluated against ${formatDateTime(referenceDate)}, the day these records were taken from NYC Open Data — not today.`}
         >
             as at {formatDate(referenceDate)}
         </span>

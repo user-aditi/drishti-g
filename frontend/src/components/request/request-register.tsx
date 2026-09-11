@@ -130,7 +130,7 @@ export function RequestRegister({
                                     </Td>
                                     <Td mono align="right" className="whitespace-nowrap">
                                         {formatHours(
-                                            ageHours(request.createdAt, request.closedAt, now),
+                                            ageHours(request.createdAt, request.closedAt, request.status, now),
                                         )}
                                     </Td>
                                     <Td align="right" className="whitespace-nowrap">

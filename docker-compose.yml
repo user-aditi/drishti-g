@@ -16,18 +16,17 @@ services:
       timeout: 5s
       retries: 10
 
-  # Migrate and populate, once, before anything tries to read.
+  # Migrate and seed, once, before anything tries to read.
   #
   # Without this `docker compose up` on a clean machine brings three processes
   # up against an empty database: no tables, every query failing, and a web app
-  # rendering errors. The acceptance criterion says compose brings *the whole
-  # thing* up, and three running containers with nothing in them is not that.
+  # rendering errors. That happened once (F-06) and this service is the fix.
   #
-  # The order is not arbitrary and is the same sequence the README documents:
-  # `org:roles` refuses to retire field-worker postings until `migrate:crew` has
-  # created the crew records they become. Run out of order it fails, which is
-  # the correct behaviour and the reason this is one command rather than four
-  # services racing.
+  # It does NOT import the 355,430-row corpus. That is a separate, deliberate
+  # step — `npm run import:nyc` after `python -m drishti_research.nyc_pull` —
+  # because it reads a 150MB file that is not vendored, and a compose that
+  # silently spent minutes downloading public data on every fresh clone would be
+  # a surprise nobody asked for.
   setup:
     build:
       context: ./backend

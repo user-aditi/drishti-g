@@ -114,17 +114,30 @@ the reason all of that scaffolding exists.
 
 ### The system clock is not the wall clock
 
-The corpus is real historical data ending 2025-12-31. Ask `Date.now()` whether an
-imported request is overdue and the answer is yes, for all 355,430 of them —
-every queue sorts identically, every breach figure reads 100%, and nothing
+The corpus is a snapshot: requests filed 2022–2025, with their statuses and
+closure times as NYC published them when the data was pulled on 2026-09-09. Ask
+`Date.now()` whether one is overdue and every queue, age and breach figure is
+quietly measured against a day the record does not describe — and nothing
 throws. It looks exactly like a working feature.
 
 So the system stands at a configured `SYSTEM_REFERENCE_DATE`, defaulting to the
-last request in the corpus, and *nothing* computes overdue from wall-clock time.
-The dates are never shifted to look recent: doing so would destroy real
-seasonality, and garbage complaints genuinely spike in summer.
+**snapshot date** — the one moment at which every field of every row is true at
+once — and *nothing* computes overdue from wall-clock time. The dates are never
+shifted to look recent: doing so would destroy real seasonality, and garbage
+complaints genuinely spike in summer.
 
-The server prints the reference date at boot, and `/api/v1/health` reports it.
+The default used to be the last *intake* date, 2025-12-31. That was wrong, and
+the verification script caught it: NYC closed 6,628 of these requests after 31
+December, so standing there showed them as Closed on a day they were open.
+
+One consequence worth knowing before you read the queue: at the snapshot date
+nearly the whole open backlog is overdue. That is true — the newest request is
+eight months older than the snapshot, against deadlines of ten days or less —
+and it is not a sign the clock is broken. "Open" means NYC's published status
+is not Closed, everywhere in the system, and overdue is always a subset of it.
+
+The server prints the reference date at boot, `/api/v1/health` reports it, and
+`npm run verify:import` fails if it stops matching the corpus manifest.
 
 ## What Layer 0 contains
 

@@ -1,3 +1,5 @@
+import type { RequestStatus } from '@/types'
+
 /**
  * Formatting, fixed to the record's own clock.
  *
@@ -71,11 +73,11 @@ export function formatHours(hours: number | null | undefined): string {
 /**
  * "Now", as this system understands it.
  *
- * Not the wall clock. The corpus ends on 2025-12-31 and the API evaluates every
- * deadline against a configured reference date, so a screen that measured age
- * against the browser's clock would disagree with the `isOverdue` flag sitting
- * next to it — and would report every one of the 355,430 imported requests as
- * having waited since real time passed the end of the data.
+ * Not the wall clock. The API evaluates every deadline against a configured
+ * reference date — the snapshot the corpus was pulled on — so a screen that
+ * measured age against the browser's clock would disagree with the `isOverdue`
+ * flag sitting next to it, and every age would keep growing on a record that
+ * stopped changing the day it was taken.
  *
  * Callers that hold the reference date pass it. The fallback exists only so a
  * component still renders something sane if the clock could not be read.
@@ -110,10 +112,33 @@ export function relativeTime(iso: string | null | undefined, now = Date.now()): 
     return ahead ? `in ${Math.round(months / 12)}y` : `${Math.round(months / 12)}y ago`
 }
 
-/** How long a request has been open, or was open for, in hours. */
-export function ageHours(createdAt: string, closedAt: string | null, now = Date.now()): number {
-    const end = closedAt ? new Date(closedAt).getTime() : now
-    return (end - new Date(createdAt).getTime()) / 3_600_000
+/**
+ * How long a request has been open, or was open for, in hours — or null when
+ * the record cannot honestly say.
+ *
+ * "Open" is NYC's published status, the rule the API applies everywhere, so an
+ * open request's age runs to the reference date even when NYC's row also
+ * carries a closed_date. 2,791 imported rows do, and for 2,376 of them that
+ * closed_date falls *before* the request was filed — by up to 183 days. Reading
+ * age off it put "-5761 min" in the queue's age column.
+ *
+ * A closed request's figure is closed_date minus filing, unless that comes out
+ * negative, in which case the record is inconsistent and the answer is null — a
+ * dash on screen, not a negative number and not a guess. An open request filed
+ * after the reference date (anything filed through this replica, F-24) is also
+ * null: its age as at the snapshot is not a quantity that exists.
+ */
+export function ageHours(
+    createdAt: string,
+    closedAt: string | null,
+    status: RequestStatus,
+    now = Date.now(),
+): number | null {
+    const start = new Date(createdAt).getTime()
+    const end = status === 'CLOSED' ? (closedAt ? new Date(closedAt).getTime() : null) : now
+    if (end === null) return null
+    const hours = (end - start) / 3_600_000
+    return hours >= 0 ? hours : null
 }
 
 export type DeadlineTone = 'stop' | 'wait' | 'neutral'

@@ -147,9 +147,9 @@ export interface MapCluster {
  * A page of rows.
  *
  * `referenceDate` rides along with every register page for a reason: nothing on
- * this screen is measured against the wall clock. The corpus ends on
- * 2025-12-31 and "overdue" is evaluated against a configured date, so a count
- * of overdue requests is meaningless without the day it was counted on.
+ * this screen is measured against the wall clock. "Overdue" is evaluated against
+ * the snapshot date the corpus was pulled on, so a count of overdue requests is
+ * meaningless without the day it was counted on.
  */
 export interface Paged<T> {
     rows: T[]

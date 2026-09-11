@@ -70,11 +70,16 @@ boardsRouter.get(
                  COUNT(*) FILTER (WHERE r.status <> 'CLOSED')     AS open,
                  COUNT(*) FILTER (WHERE r.status = 'CLOSED')      AS closed,
                  COUNT(*) FILTER (
-                   WHERE r."closedAt" IS NULL AND r."slaDueAt" < ${now}
+                   WHERE r.status <> 'CLOSED' AND r."slaDueAt" < ${now}
                  )                                                AS overdue,
                  PERCENTILE_CONT(0.5) WITHIN GROUP (
                    ORDER BY EXTRACT(EPOCH FROM (r."closedAt" - r."createdAt")) / 3600.0
-                 ) FILTER (WHERE r."closedAt" IS NOT NULL)        AS median_hours
+                 ) FILTER (
+                   -- 2,382 imported rows close before they were filed. The
+                   -- research harness and the fidelity check both drop them;
+                   -- a median that kept them would disagree with both.
+                   WHERE r."closedAt" IS NOT NULL AND r."closedAt" >= r."createdAt"
+                 )                                                AS median_hours
           FROM service_requests r
           WHERE r."orgUnitId" IS NOT NULL
           GROUP BY r."orgUnitId"

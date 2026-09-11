@@ -160,6 +160,57 @@ describe('overdue', () => {
     const res = await request(app).get(`${api}/requests/NYC-3`).expect(200)
     expect(res.body.isOverdue).toBe(false)
   })
+
+  /**
+   * NYC's own fields disagree on 2,839 imported rows: a status that is not
+   * Closed alongside a closed_date, or Closed with none. The system has to pick
+   * one meaning of "open" and use it everywhere, or a register counts a request
+   * open in one column and closed in the next (F-27). It uses the status.
+   */
+  it('follows NYC’s published status when its own fields disagree', async () => {
+    const now = referenceDate()
+    await prisma.serviceRequest.createMany({
+      data: [
+        {
+          // Pending, yet carrying a closed_date — open, and past due.
+          srNumber: 'NYC-4',
+          typeId: f.streetType,
+          agencyId: f.dot,
+          status: RequestStatus.PENDING,
+          channel: Channel.PHONE,
+          createdAt: new Date(now.getTime() - 30 * 86_400_000),
+          slaDueAt: new Date(now.getTime() - 20 * 86_400_000),
+          closedAt: new Date(now.getTime() - 25 * 86_400_000),
+          isImported: true,
+        },
+        {
+          // Closed, with no closed_date — not open, so never overdue.
+          srNumber: 'NYC-5',
+          typeId: f.streetType,
+          agencyId: f.dot,
+          status: RequestStatus.CLOSED,
+          channel: Channel.PHONE,
+          createdAt: new Date(now.getTime() - 30 * 86_400_000),
+          slaDueAt: new Date(now.getTime() - 20 * 86_400_000),
+          isImported: true,
+        },
+      ],
+    })
+
+    const pending = await request(app).get(`${api}/requests/NYC-4`).expect(200)
+    const closed = await request(app).get(`${api}/requests/NYC-5`).expect(200)
+    expect(pending.body.isOverdue).toBe(true)
+    expect(closed.body.isOverdue).toBe(false)
+
+    // The queue's overdue filter applies the same rule as the record itself.
+    const queue = await request(app)
+      .get(`${api}/requests?overdue=true`)
+      .set('Authorization', `Bearer ${signToken(f.dotAgent, 'access', 'AGENT')}`)
+      .expect(200)
+    const numbers = queue.body.rows.map((r: { srNumber: string }) => r.srNumber)
+    expect(numbers).toContain('NYC-4')
+    expect(numbers).not.toContain('NYC-5')
+  })
 })
 
 describe('public lookup', () => {
@@ -274,6 +325,43 @@ describe('the agency queue', () => {
       .expect(200)
     expect(res.body.rows).toHaveLength(1)
     expect(res.body.total).toBe(2)
+  })
+
+  /**
+   * Three filters constrain `status`: an explicit status, "open only" and
+   * "overdue". They used to be spread into one object, so whichever came last
+   * silently replaced the others — choosing Pending with "open only" ticked
+   * returned every open request, of any status.
+   */
+  it('combines filters that all constrain status instead of letting one win', async () => {
+    const now = referenceDate()
+    await prisma.serviceRequest.create({
+      data: {
+        srNumber: 'NYC-13',
+        typeId: f.streetType,
+        agencyId: f.dot,
+        orgUnitId: f.board1,
+        status: RequestStatus.PENDING,
+        channel: Channel.PHONE,
+        createdAt: new Date(now.getTime() - 86_400_000),
+        // Not yet due, so "overdue" must exclude it even though it is open.
+        slaDueAt: new Date(now.getTime() + 86_400_000),
+        isImported: true,
+      },
+    })
+
+    const pendingOpen = await request(app)
+      .get(`${api}/requests?status=PENDING&openOnly=true`)
+      .set('Authorization', as(f.dotAgent, 'AGENT'))
+      .expect(200)
+    expect(pendingOpen.body.rows.map((r: { srNumber: string }) => r.srNumber)).toEqual(['NYC-13'])
+
+    const pendingOverdue = await request(app)
+      .get(`${api}/requests?status=PENDING&overdue=true`)
+      .set('Authorization', as(f.dotAgent, 'AGENT'))
+      .expect(200)
+    // NYC-10 is overdue but Open, not Pending; NYC-13 is Pending but not due.
+    expect(pendingOverdue.body.total).toBe(0)
   })
 })
 

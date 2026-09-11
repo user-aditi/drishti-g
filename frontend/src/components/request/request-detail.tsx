@@ -104,7 +104,7 @@ export function RequestDetail({
                             {request.closedAt ? formatDateTime(request.closedAt) : EMPTY}
                         </Field>
                         <Field label={stillOpen ? 'Open for' : 'Time to close'} mono>
-                            {formatHours(ageHours(request.createdAt, request.closedAt, now))}
+                            {formatHours(ageHours(request.createdAt, request.closedAt, request.status, now))}
                         </Field>
                         <Field label="Derived deadline †">
                             <span

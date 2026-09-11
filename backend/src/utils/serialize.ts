@@ -86,10 +86,19 @@ type RequestWithRefs = ServiceRequest & {
  * other direction once produced 2,554 open complaints and zero overdue.
  */
 export function publicRequest(request: RequestWithRefs, referenceDate: Date) {
-  const isClosed = request.closedAt !== null
   const dueAt = request.slaDueAt
+  // "Open" means NYC's published status is not Closed — the same rule the
+  // register, the boards and the map use, so a request is never counted open
+  // in one place and closed in another. NYC's own fields disagree on 2,839 rows
+  // (2,791 not Closed yet carrying a closed_date, 48 Closed with none); before
+  // this rule existed the boards register counted "open" by status and
+  // "overdue" by closedAt, so its overdue column was not a subset of its open
+  // one (F-27). closedAt is used only for what it measures: when it closed.
   const isOverdue =
-    dueAt !== null && (isClosed ? request.closedAt! > dueAt : referenceDate > dueAt)
+    dueAt !== null &&
+    (request.status !== 'CLOSED'
+      ? referenceDate > dueAt
+      : request.closedAt !== null && request.closedAt > dueAt)
 
   return {
     id: request.id,

@@ -145,9 +145,10 @@ const listSchema = z.object({
  * filter in the client, which works fine against a seeded database of two
  * thousand and falls over the first time it meets the real corpus.
  *
- * `overdue` is a filter over `slaDueAt` against the **system reference date**,
- * never `Date.now()`. This corpus ends in December 2025: asking the wall clock
- * marks every imported request overdue and the filter stops meaning anything.
+ * `overdue` is a filter over `slaDueAt` against the **system reference date** —
+ * the snapshot at which NYC's statuses were observed — never `Date.now()`. Asked
+ * of the wall clock, every figure on this screen would describe a day the record
+ * does not.
  */
 requestsRouter.get(
   '/',
@@ -159,17 +160,25 @@ requestsRouter.get(
     const q = parsed.data
     const now = referenceDate()
 
-    const where: Prisma.ServiceRequestWhereInput = {
+    // ANDed as separate conditions, not spread into one object. Three filters
+    // constrain `status` — an explicit status, "open only" and "overdue" — and
+    // spreading them let the last silently overwrite the first: choosing Pending
+    // with "open only" ticked returned every open request of any status.
+    const conditions: Prisma.ServiceRequestWhereInput[] = [
       // An agent sees their own agency's work. Agency-level accountability is
       // the whole of Layer 0's access model — there is nothing finer to scope
       // to, because NYC records no individual ownership.
-      agencyId: q.agencyId ?? req.user!.agencyId ?? undefined,
-      ...(q.orgUnitId ? { orgUnitId: q.orgUnitId } : {}),
-      ...(q.typeId ? { typeId: q.typeId } : {}),
-      ...(q.status ? { status: q.status } : {}),
-      ...(q.openOnly ? { status: { not: RequestStatus.CLOSED } } : {}),
-      ...(q.overdue ? { slaDueAt: { lt: now }, closedAt: null } : {}),
+      { agencyId: q.agencyId ?? req.user!.agencyId ?? undefined },
+    ]
+    if (q.orgUnitId) conditions.push({ orgUnitId: q.orgUnitId })
+    if (q.typeId) conditions.push({ typeId: q.typeId })
+    if (q.status) conditions.push({ status: q.status })
+    if (q.openOnly) conditions.push({ status: { not: RequestStatus.CLOSED } })
+    // Open by NYC's status, as everywhere else — see publicRequest.
+    if (q.overdue) {
+      conditions.push({ slaDueAt: { lt: now }, status: { not: RequestStatus.CLOSED } })
     }
+    const where: Prisma.ServiceRequestWhereInput = { AND: conditions }
 
     const [rows, total] = await Promise.all([
       prisma.serviceRequest.findMany({
