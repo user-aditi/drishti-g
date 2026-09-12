@@ -20,6 +20,7 @@
     "risk:recompute": "dotenv -e ../.env -- tsx scripts/recompute-risk.ts",
     "layer3:measure": "dotenv -e ../.env -- tsx scripts/measure-layer3.ts",
     "layer4:measure": "dotenv -e ../.env -- tsx scripts/measure-layer4.ts",
+    "audit:pages": "dotenv -e ../.env -- tsx scripts/audit-pages.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "docker exec drishti_postgres psql -U drishti -d postgres -c \"DROP DATABASE IF EXISTS drishti_nyc_test;\" -c \"CREATE DATABASE drishti_nyc_test OWNER drishti;\"",

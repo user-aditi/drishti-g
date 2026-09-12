@@ -1,25 +1,10 @@
 import type { Metadata } from 'next'
-import dynamicImport from 'next/dynamic'
 import { PageHeading, PageShell } from '@/components/shared/page-heading'
-import { Skeleton } from '@/components/ui/skeleton'
 import { requireUser } from '@/lib/auth'
+import { ClusterMapLoader } from './map-loader'
 
 export const metadata: Metadata = { title: 'Map' }
 export const dynamic = 'force-dynamic'
-
-/**
- * Leaflet measures the element it mounts into and reaches for `window` while
- * doing it, so it cannot be server-rendered. Loading it browser-only is the
- * supported way round that, and the skeleton holds the same height so the page
- * does not jump when the map arrives.
- */
-const ClusterMap = dynamicImport(
-    () => import('./cluster-map').then((m) => m.ClusterMap),
-    {
-        ssr: false,
-        loading: () => <Skeleton className="h-[70vh] min-h-[420px] w-full rounded-[var(--radius)]" />,
-    },
-)
 
 /**
  * Where the open work is.
@@ -42,7 +27,7 @@ export default async function MapPage() {
                         : 'Open requests across every agency, clustered.'
                 }
             />
-            <ClusterMap agencyLabel={user.agency?.code ?? null} />
+            <ClusterMapLoader agencyLabel={user.agency?.code ?? null} />
         </PageShell>
     )
 }
