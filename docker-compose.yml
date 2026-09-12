@@ -37,6 +37,13 @@ services:
     volumes:
       - ./backend/prisma:/app/prisma
       - ./backend/scripts:/app/scripts
+      # The seed reads the derived SLA table from research/, which is outside
+      # this image's build context. Without this mount a fresh clone failed here
+      # with ENOENT, and because api and web wait for setup to succeed, nothing
+      # came up at all. Read-only: seeding reads the table and never writes it,
+      # and one committed copy cannot drift from a second one in backend/.
+      - ./research/data/nyc/sla-table.csv:/research/data/nyc/sla-table.csv:ro
+      - ./research/data/nyc/sla-table.meta.json:/research/data/nyc/sla-table.meta.json:ro
     command: ["npm", "run", "setup"]
     depends_on:
       postgres:
@@ -52,6 +59,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     ports:
       - "4000:4000"
+    # The source is mounted so the image need not be rebuilt for every edit, but
+    # on Windows and macOS hosts file-change events do not reach the container,
+    # so `tsx watch` never notices: the API keeps running the code it booted with.
+    # After editing, run `docker compose restart api`. This was found the hard way,
+    # verifying a fix against a container still serving the bug.
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma

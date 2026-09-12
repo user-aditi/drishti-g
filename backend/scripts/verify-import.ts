@@ -214,13 +214,34 @@ async function overdue(): Promise<Result> {
  * Throws when the source does not answer cleanly after three tries.
  */
 async function fetchSourceRow(key: string): Promise<Record<string, string> | undefined> {
+  // The same variable the Python pull reads. Anonymous callers share one pool
+  // that Socrata throttles hard; with a (free) app token this check stops being
+  // at the mercy of everyone else's traffic.
+  const token = process.env.NYC_APP_TOKEN
+  const headers: Record<string, string> = token ? { 'X-App-Token': token } : {}
+
   let last = 'no attempt made'
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_000 * 2 ** attempt))
+  let wait = 0
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
     try {
-      const res = await fetch(`${SOCRATA}?unique_key=${key}`, { signal: AbortSignal.timeout(30_000) })
+      const res = await fetch(`${SOCRATA}?unique_key=${key}`, {
+        headers,
+        signal: AbortSignal.timeout(30_000),
+      })
       if (!res.ok) {
         last = `HTTP ${res.status}`
+        // A 429 is a rate limit, and a limit measured in seconds is not waited
+        // out by a retry two seconds later. Honour Retry-After when Socrata sends
+        // it; otherwise back off 15, 30, then 60 seconds.
+        const retryAfter = Number(res.headers.get('retry-after'))
+        wait =
+          res.status === 429 && retryAfter > 0
+            ? retryAfter * 1_000
+            : res.status === 429
+              ? 15_000 * 2 ** attempt
+              : 2_000 * 2 ** attempt
+        if (res.status === 429 && !token) last = 'HTTP 429, throttled; set NYC_APP_TOKEN to leave the shared pool'
         continue
       }
       const body: unknown = await res.json()
@@ -231,6 +252,7 @@ async function fetchSourceRow(key: string): Promise<Record<string, string> | und
       return body[0] as Record<string, string> | undefined
     } catch (err) {
       last = err instanceof Error ? err.message : String(err)
+      wait = 2_000 * 2 ** attempt
     }
   }
   throw new Error(last)

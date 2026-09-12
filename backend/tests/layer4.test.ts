@@ -100,7 +100,7 @@ async function workOrder(onRequest: number, issuedHoursAgo = 1) {
 async function photo(
   workOrderId: number,
   bytes: Buffer,
-  extra: { capturedAt?: Date; exifLat?: number; exifLng?: number } = {},
+  extra: { capturedAt?: Date; exifLat?: number; exifLng?: number; uploadedAt?: Date } = {},
 ) {
   const identity = await identify(bytes)
   return prisma.workPhoto.create({
@@ -116,6 +116,7 @@ async function photo(
       capturedAt: extra.capturedAt ?? null,
       exifLat: extra.exifLat ?? null,
       exifLng: extra.exifLng ?? null,
+      ...(extra.uploadedAt ? { uploadedAt: extra.uploadedAt } : {}),
     },
   })
 }
@@ -166,15 +167,29 @@ describe('the checks', () => {
   it('refuses a photograph already sent against another job', async () => {
     const bytes = await image(2)
     const first = await workOrder(requestId)
-    await photo(first.id, bytes)
+    const original = await photo(first.id, bytes)
     const second = await workOrder(anonymousRequestId)
-    await photo(second.id, bytes)
+    await photo(second.id, bytes, { uploadedAt: new Date(original.uploadedAt.getTime() + 1_000) })
 
     const result = await assess(prisma, second.id)
     expect(result.outcome).toBe(ProofOutcome.REJECTED)
     const check = result.checks.find((c) => c.check === 'not_recycled')!
     expect(check.passed).toBe(false)
     expect(check.detail).toContain(first.code)
+  })
+
+  it('does not blame the job that sent a photograph first when a later job reuses it', async () => {
+    const bytes = await image(14)
+    const first = await workOrder(requestId)
+    const original = await photo(first.id, bytes)
+    const later = await workOrder(anonymousRequestId)
+    await photo(later.id, bytes, { uploadedAt: new Date(original.uploadedAt.getTime() + 1_000) })
+
+    // The later job is the one that recycled it...
+    expect((await assess(prisma, later.id)).outcome).toBe(ProofOutcome.REJECTED)
+    // ...and the job that sent it first is not refused for somebody else's reuse.
+    const check = (await assess(prisma, first.id)).checks.find((c) => c.check === 'not_recycled')!
+    expect(check.passed).toBe(true)
   })
 
   it('asks the resident when the proof is plausible', async () => {
@@ -283,7 +298,7 @@ describe('the crew surface', () => {
   it('does not record a refused submission as finished', async () => {
     const bytes = await image(8)
     const first = await workOrder(anonymousRequestId)
-    await photo(first.id, bytes)
+    await photo(first.id, bytes, { uploadedAt: new Date(Date.now() - 60_000) })
 
     const order = await workOrder(requestId)
     const res = await request(app)

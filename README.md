@@ -53,7 +53,10 @@ docker compose up --build
 ```
 
 That brings up Postgres, migrates it, seeds the reference data, and starts the
-API on `:4000` and the web app on `:3000`. It does **not** import the corpus —
+API on `:4000` and the web app on `:3000`. On Windows and macOS, edits to the
+mounted source do not reach the running containers: restart the service after
+changing code (`docker compose restart api`), or run the dev servers directly as
+below. It does **not** import the corpus —
 that is a separate, deliberate step, because it downloads and inserts 355,430
 rows.
 

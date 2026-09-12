@@ -136,20 +136,33 @@ export async function assess(db: Db, workOrderId: number): Promise<Assessment> {
   if (photos.length > 0) {
     const elsewhere = await db.workPhoto.findMany({
       where: { workOrderId: { not: workOrderId } },
-      select: { sha256: true, dHash: true, workOrder: { select: { code: true } } },
+      select: { sha256: true, dHash: true, uploadedAt: true, workOrder: { select: { code: true } } },
     })
-    const mine = new Set(photos.map((p) => p.sha256))
-    const exact = elsewhere.find((other) => mine.has(other.sha256))
-    if (exact) {
-      recycled = `This is the same file already sent against job ${exact.workOrder.code}.`
-    } else if (spec) {
-      for (const photo of photos) {
-        if (!photo.dHash) continue
-        const near = elsewhere.find((other) => {
+    /*
+     * Recycled means another job had this photograph *first*.
+     *
+     * The first version compared against every other job's photographs,
+     * whenever they arrived, so the check was symmetric. A crew that sent an
+     * honest photograph was then refused the next time their job was assessed,
+     * because somebody on a later job had reused their picture — the error this
+     * layer ranks worst, an honest crew turned away. Found in the Docker
+     * walkthrough: a new photo on the original job re-ran the checks and blamed
+     * it for the copy. Only a photograph that reached another job strictly
+     * earlier counts against this one; a tie goes to the crew.
+     */
+    for (const photo of photos) {
+      const earlier = elsewhere.filter((other) => other.uploadedAt < photo.uploadedAt)
+      const exact = earlier.find((other) => other.sha256 === photo.sha256)
+      if (exact) {
+        recycled = `This is the same file already sent against job ${exact.workOrder.code}.`
+        break
+      }
+      if (spec && photo.dHash) {
+        comparedPerceptually = true
+        const near = earlier.find((other) => {
           const distance = hamming(photo.dHash, other.dHash)
           return distance !== null && distance <= spec.threshold
         })
-        comparedPerceptually = true
         if (near) {
           recycled = `This is the same photograph already sent against job ${near.workOrder.code}, saved again.`
           break
