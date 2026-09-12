@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { PageShell } from '@/components/shared/page-heading'
 import { RequestDetail } from '@/components/request/request-detail'
+import { CitizenProofPanel } from '@/components/layer4/citizen-panel'
 import { ErrorNotice, EmptyNotice } from '@/components/shared/notices'
 import { Button } from '@/components/ui/button'
 import { getHealth, getRequestBySrNumber } from '@/lib/api'
@@ -64,6 +65,9 @@ export default async function RequestStatusPage({ params }: { params: { srNumber
             </div>
 
             {request && <RequestDetail request={request} referenceDate={referenceDate} />}
+
+            {/* Layer 4, and only for the person who reported this one. */}
+            {request && <CitizenProofPanel srNumber={srNumber} />}
 
             {failure?.notFound && (
                 <EmptyNotice title={`No request found for ${srNumber}`}>

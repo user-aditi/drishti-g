@@ -49,3 +49,9 @@ research/data/nyc/parts/
 # 25MB, re-pullable with `python -m drishti_research.nyc_routing --refresh`.
 research/data/nyc/routing.csv
 research/data/nyc/routing-parts/
+
+# The QR4Change photographs (CC BY 4.0): a 1,000-image sample, ~1.9GB, fetched
+# with `python -m drishti_research.qr4change`. The manifest and the measurements
+# are committed; the photographs are not.
+research/data/qr4change/*
+!research/data/qr4change/manifest.json

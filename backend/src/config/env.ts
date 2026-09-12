@@ -34,6 +34,12 @@ const schema = z.object({
   APP_URL: z.string().default('http://localhost:3000'),
   /** Layer 2: how often the escalation sweep looks for breached live requests. */
   ESCALATION_SWEEP_MS: z.coerce.number().int().min(10_000).default(300_000),
+  /** Layer 4: where photographs sent back from a job are written. */
+  UPLOAD_DIR: z.string().default('uploads'),
+  /** Layer 4: how long the person who reported it has before the system decides without them. */
+  CITIZEN_GRACE_HOURS: z.coerce.number().int().min(1).default(48),
+  /** Layer 4: how often the system looks for submissions whose citizen never answered. */
+  PROOF_SWEEP_MS: z.coerce.number().int().min(10_000).default(600_000),
 
   /*
    * Where the system believes it is standing in time.

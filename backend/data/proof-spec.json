@@ -1,0 +1,33 @@
+{
+  "contract": "proof-dhash/1",
+  "modelVersion": "dhash64-t4-20260912",
+  "trainedAt": "2026-09-12T17:19:29.349Z",
+  "source": "backend/scripts/measure-layer4.ts",
+  "rule": "largest threshold whose false-match rate is at most 0.00001",
+  "threshold": 4,
+  "measurement": {
+    "photographs": 1000,
+    "pairs": 499490,
+    "falseMatches": 4,
+    "falseMatchRate": 0.000008008168331698332,
+    "duplicateFilePairs": 10,
+    "transforms": {
+      "re-encoded (JPEG 70)": 0.993,
+      "resized to half": 0.919,
+      "cropped 10%": 0.056,
+      "brightened": 0.955
+    },
+    "caughtOverall": 0.73075,
+    "identicalPairsSeen": 0
+  },
+  "dataset": {
+    "name": "Urban Civic Issues Image Dataset: Potholes and Garbage (QR4Change)",
+    "doi": "10.17632/zndzygc3p3.2",
+    "licence": "CC BY 4.0"
+  },
+  "limits": [
+    "Measured on Pune street photography, not on New York, and not on photographs of repairs.",
+    "A rotated or mirrored copy is not caught: this hash is not rotation invariant.",
+    "Nothing here tells whether the work was done. It tells whether the photograph is new."
+  ]
+}

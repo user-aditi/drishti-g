@@ -30,15 +30,21 @@ What NYC's data cannot show is who handled a request, what steps they took, and
 whether the work was verified. That gap is precisely where the contribution
 lives.
 
-| Layer | Adds | Measured against the baseline by |
+| Layer | Adds | What it was actually measured by |
 |---|---|---|
 | **0** | The replica: intake, routing, agency queues, status, geography | — it *is* the baseline |
-| 1 | Officer identity, work orders | Coverage and assignment latency — see below for why not resolution time |
-| 2 | Escalation on SLA breach | Do our escalations coincide with what NYC actually closed late? |
-| 3 | GCCE routing, GRIE risk radar | Routing accuracy against real agency assignment; do high-scored boards fail next month? |
-| 4 | Photo verification | Scoped to potholes and garbage, the only categories with real imagery |
+| 1 | Officer identity, work orders | Coverage: 6,318 of 6,318 open requests have exactly one accountable officer |
+| 2 | Escalation on SLA breach | Early-warning precision on NYC's own timestamps — 62.1% at half the service level |
+| 3 | GRIE risk radar, and a routing *report* | Cross-validated AUC 0.807, calibrated; routing had nothing to learn (184 of 188 types go to one agency) |
+| 4 | Photo verification | 4 false matches in 499,490 photograph pairs; 99.3% of re-saved copies caught |
 
-Layers 0 and 1 are built. Everything above them is specified and not yet written.
+**Every layer is built.** Three of those four measurements are not the ones the
+plan asked for, and the reasons are the more interesting results: named
+accountability has no resolution-time counterfactual in data that records no
+case worker; "do our escalations coincide with what NYC closed late?" is a
+tautology, since one derived deadline defines both; and NYC's taxonomy has
+already solved routing, so there is nothing for a router to win. Each is
+recorded in `docs/research-decisions.md` rather than quietly replaced.
 
 ## Quick start
 
@@ -340,6 +346,72 @@ agency; nothing known at intake predicts Encampment or Highway Condition.
 Running it live would reproduce NYC's menu, so `nyc_routing.py` measures it and
 `/admin/routing` reports it.
 
+## What Layer 4 adds — proof of work, and its limits
+
+NYC closes a request with a sentence of agency text: no photograph, nothing a
+resident could check. Layer 4 asks the crew for a picture, and then asks what a
+picture can honestly prove.
+
+Not that the pothole is filled. **No check here looks at what the photograph
+shows.** What they can establish is that a submission is not what it claims, and
+that covers most of what going wrong looks like in the field:
+
+| Check | Weight | What it establishes |
+| --- | --- | --- |
+| A photograph was sent | 25 | Something is attached at all |
+| The photograph is new to this job | 25 | Not already sent against another job, re-saved copies included |
+| Taken after the job was sent out | 20 | From EXIF, when the phone leaves it |
+| Taken at the reported location | 15 | From EXIF, within 500 m of where the request was filed |
+| Sent before the deadline | 15 | Against the derived deadline, since NYC publishes none |
+
+Two of those are disqualifying rather than merely negative: nothing attached, and
+a photograph already used elsewhere, are evidence that this is not proof. The
+rest are weighed, and a check that *could not run* — most phones strip EXIF —
+scores half and says so rather than counting as a failure.
+
+Then the judgement goes to a person, and the order matters. The resident who
+reported the problem is asked first, because they can see the street; their
+answer outranks every check above, in both directions. An officer is called only
+when the resident disputes the work, or when weak proof goes unanswered for 48
+hours. Routing every closure across an officer's desk is the bottleneck that
+makes these systems rot, so `/officer/verify` holds only what genuinely needs a
+person, and is usually empty.
+
+### The recycled-photograph check, and what it cost to set
+
+Sending an old picture again is the easiest way to fake a closure, and an exact
+file hash catches it only until the crew's gallery app re-saves the file. So each
+photograph also carries a 64-bit difference hash, and two photographs count as
+the same one when at most **4 of those 64 bits differ**.
+
+That threshold is measured, not chosen: on 1,000 real civic photographs
+(QR4Change, CC BY 4.0) and 499,490 pairs of different photographs —
+
+| At 4 bits | Result |
+| --- | --- |
+| Different photographs wrongly matched | 4 in 499,490 pairs (0.0008%) |
+| Re-encoded by a gallery app | 99.3% caught |
+| Resized to half | 91.9% caught |
+| Brightened | 95.5% caught |
+| Cropped by 10% | 5.6% caught |
+
+The rule was fixed before the run: take the largest threshold whose false-match
+rate stays at or below one in 100,000, because refusing an honest crew standing
+at a finished job is the worse error. **Cropping defeats this hash** — that is a
+stated limit, not a gap to be tuned away — and the measurement comes from Pune
+street photography, not from New York and not from pictures of repairs.
+`npm run layer4:measure` reproduces all of it; the threshold ships in
+`backend/data/proof-spec.json`, and without that file the check still runs on
+exact file identity and says that is all it did.
+
+### Screens
+
+| Screen | Who | What |
+| --- | --- | --- |
+| `/w/[code]` | The crew, no account | Attach up to three photographs through the phone's camera, and read what each check found |
+| `/sr/[srNumber]` | The resident who reported it | See what the crew sent and answer whether it was done |
+| `/officer/verify` | Officer, supervisor | Only disputes and unanswered weak proof; accept, or send it back with a reason the crew is shown |
+
 ## Proving it still works
 
 ```bash
@@ -354,6 +426,7 @@ Each layer also has a check that runs against the real corpus:
 | `npm run layer1:measure` | Every open request has exactly one correctly posted officer |
 | `npm run layer2:measure` | Escalation fires on breach only, and never on NYC's history |
 | `npm run layer3:measure` | The backend reproduces the study's risk model on every unit-month |
+| `npm run layer4:measure` | What the recycled-photograph check is worth, on real civic photographs |
 
 Tests run against a real Postgres database, `drishti_nyc_test`, not a mock. The
 logic worth testing here is all queries — the chain under concurrency, the

@@ -5,11 +5,13 @@ import { createLogger } from './lib/logger.js'
 import { prisma } from './lib/prisma.js'
 import { warmBoards } from './routes/boards.js'
 import { startEscalationSweep } from './services/escalation.js'
+import { startProofSweep } from './services/proof.js'
 
 const log = createLogger('server')
 
 const app = createApp()
 let stopSweep: (() => void) | null = null
+let stopProofSweep: (() => void) | null = null
 
 const server = app.listen(env.PORT, () => {
   log.info(`listening on http://localhost:${env.PORT}${env.API_PREFIX}`)
@@ -36,6 +38,8 @@ const server = app.listen(env.PORT, () => {
     stopSweep = startEscalationSweep(prisma, env.ESCALATION_SWEEP_MS, (message) =>
       log.info(message),
     )
+    // Layer 4: submissions whose resident never answered.
+    stopProofSweep = startProofSweep(prisma, env.PROOF_SWEEP_MS, (message) => log.info(message))
   }
 
   /*
@@ -52,6 +56,7 @@ const server = app.listen(env.PORT, () => {
 async function shutdown(signal: string) {
   log.info(`${signal} received, shutting down`)
   stopSweep?.()
+  stopProofSweep?.()
   server.close()
   await prisma.$disconnect()
   process.exit(0)

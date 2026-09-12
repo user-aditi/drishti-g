@@ -1,5 +1,14 @@
 # Pending work — what is deliberately unfinished
 
+> **This file describes the system as it stood before the NYC 311 rebuild.** It
+> is still accurate for `main` and `archive/noida-model`, and the findings in it
+> — the autonomy gate that could automate nothing, the audit-chain defects, the
+> recurrence signal that measured volume — stand and are cited by the paper. The
+> product surfaces it lists (the simulated corpus, the classifier, the traffic
+> simulator) were removed in Phase 1 of the rebuild. For what exists on
+> `rebuild/nyc-311`, read the README and
+> [research-decisions.md](research-decisions.md), Phases 0 to 8.
+
 The running ledger of everything in DRISHTI-G that is **not** finished, so that
 no screen ever lies about its own maturity. Three kinds of entry live here:
 

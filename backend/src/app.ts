@@ -16,6 +16,7 @@ import { officerRouter } from './routes/officer.js'
 import { supervisorRouter } from './routes/supervisor.js'
 import { workOrdersRouter } from './routes/workOrders.js'
 import { escalationsRouter } from './routes/escalations.js'
+import { proofRouter } from './routes/proof.js'
 import { adminRouter } from './routes/admin.js'
 import { riskRouter } from './routes/risk.js'
 import { routingRouter } from './routes/routing.js'
@@ -50,6 +51,14 @@ export function createApp(): Express {
   app.use(`${api}/boards`, boardsRouter)
   app.use(`${api}/map`, mapRouter)
   app.use(`${api}/audit`, auditRouter)
+
+  // ---- Layer 4: photo verification. Ours, not NYC's. -----------------------
+  // Mounted before Layer 1's work-order router and on the same path, because it
+  // takes one request Layer 1 also takes: the crew's completion, in the
+  // multipart form that carries photographs. Anything else falls straight
+  // through. Remove this line and Layer 1 behaves exactly as it did before
+  // Layer 4 existed — which is the property N5 is about.
+  app.use(api, proofRouter)
 
   // ---- Layer 1: officer identity. Ours, not NYC's. -------------------------
   // Every new request leaves its filing transaction with an accountable

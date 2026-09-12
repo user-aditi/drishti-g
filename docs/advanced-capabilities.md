@@ -1,5 +1,14 @@
 # Where DRISHTI-G needs more than a full stack
 
+> **Written before the NYC 311 rebuild.** Several gaps listed here have since
+> been closed on `rebuild/nyc-311`, and closed differently from what is proposed
+> below: risk scoring is fitted and calibrated against real outcomes (Phase 7),
+> routing was measured and found to have nothing to learn from NYC's intake
+> (F-23), and photo verification ships checking what a photograph can actually
+> establish rather than what it shows (Phase 8). Read
+> [research-decisions.md](research-decisions.md) for what was measured, and
+> treat this file as the reasoning that led there.
+
 A working list of the places this system is currently held up by a deliberate
 approximation, and what would actually be needed to close the gap. Written to be
 picked up **after** the site structure is finished, so nothing here should be

@@ -1,5 +1,12 @@
 # What this system needs to run on a real street
 
+> **Written before the NYC 311 rebuild**, when the corpus was invented. The
+> central demand of this file — that the data be real before anything is claimed
+> from it — is what the rebuild acted on: `rebuild/nyc-311` runs on 355,430
+> genuine NYC service requests, and every derived figure now carries its
+> provenance. The NOIDA-specific requirements (ward boundaries, the citizen
+> charter, the posting register) remain future work for that deployment.
+
 [advanced-capabilities.md](advanced-capabilities.md) says which rules should
 become models. [pending-work.md](pending-work.md) says which screens are honest
 about being unfinished. This file says the third thing, which neither covers:

@@ -1314,3 +1314,91 @@ taxonomy has already solved it.
 
 Data: `research/results/nyc-grie-candidates.csv`, `nyc-grie-panel.csv`,
 `nyc-routing.csv`; `backend/data/grie-spec.json`, `gcce-spec.json`.
+
+## Phase 8 — what a photograph can prove
+
+Layer 4 asks the crew for proof of work. The plan's line on it was a warning
+rather than a specification: real imagery exists for potholes and garbage only,
+"binary pothole and garbage only — not before/after pairs". Phase 8 began by
+taking that seriously, and it decided the shape of the whole layer.
+
+### There is no model that can say the work was done
+
+The only usable dataset is the Urban Civic Issues collection (QR4Change, Maske,
+Jakate, Thakare and Lokhande, doi:10.17632/zndzygc3p3.2, CC BY 4.0): 1,004
+potholes against 1,962 plain roads, 712 garbage dumps against 1,259 clean
+scenes. It has negative classes, so a "does this still show a pothole?"
+classifier is trainable — and it would not be a verification model. A completion
+photograph shows a *repaired* surface, and a repaired surface is not a plain
+road; the dataset holds no repairs at all, and no before-and-after pairs to learn
+the transition from. Any accuracy such a model reported would be measured on the
+wrong task, over Pune imagery, and read as though it established something about
+New York.
+
+So no check in Layer 4 looks at image content. The checks establish that a
+submission is **new, timely and at the site**, and the product says exactly that
+wherever a score appears. What cannot be automated is who judges the work: the
+resident who reported the problem is asked first and outranks every check, and an
+officer is called only on a dispute or on weak proof nobody answered in 48 hours.
+
+### The one check that needed a measurement
+
+Re-sending an old photograph is the cheapest way to fake a closure. An exact
+file hash catches it until the file is re-saved, which a gallery app does on
+every share, so each photograph also carries a 64-bit difference hash. The
+threshold is a real trade: too tight and a re-encoded copy walks through, too
+loose and two different potholes on the same grey road are called the same
+photograph, refusing an honest crew.
+
+A 1,000-photograph sample (250 per folder, 1.89 GB, videos skipped, fixed seed)
+was hashed, then each photograph was put through what happens to a picture
+between one job and the next — re-encoded at JPEG 70, resized to half, cropped by
+10%, brightened — and re-hashed.
+
+| Bits allowed to differ | False matches in 499,490 pairs | Re-encoded | Resized | Cropped | Brightened |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 0 | 61.6% | 21.1% | 0.0% | 26.8% |
+| 2 | 2 (4.0e-6) | 95.4% | 70.6% | 1.4% | 79.2% |
+| **4** | **4 (8.0e-6)** | **99.3%** | **91.9%** | **5.6%** | **95.5%** |
+| 8 | 14 (2.8e-5) | 99.8% | 99.4% | 39.6% | 99.2% |
+| 16 | 752 (1.5e-3) | 100.0% | 100.0% | 97.4% | 100.0% |
+
+The rule was declared before the run: **the largest threshold whose false-match
+rate stays at or below one in 100,000.** Refusing a crew standing at a finished
+job is the worse error, so the rule protects them first and takes whatever
+detection that leaves. That selects **4 bits**, catching 99.3% of re-encodes and
+91.9% of resizes at four false matches in half a million pairs.
+
+**Cropping defeats it.** 5.6% at the shipped threshold, and only 39.6% at a
+threshold seven times more permissive than the rule allows. A difference hash
+describes the whole frame, so removing a border changes it. This is reported as a
+limit of the check rather than tuned away, and it is in the spec the backend
+loads.
+
+### A measurement bug that would have shipped the wrong number
+
+The first run chose a threshold of 0, catching 27% of copies, because six pairs
+matched at distance 0 and the rule read that as a false-match rate above its cap.
+Those pairs were **the same file stored twice in the dataset**. Calling them false
+matches is wrong — the check matching two identical photographs is correct — and
+it would have driven the threshold to zero on the strength of the dataset's own
+duplication. Byte-identical pairs are now counted and reported separately (10 in
+the full sample), and the rule, unchanged, selects 4.
+
+### What Phase 8 decided
+
+**No image-content model, by decision, not by omission.** It is not that a
+classifier is hard; it is that there is no ground truth for the claim it would
+make. Recorded as N14.
+
+**The resident decides, not the officer.** The plan's "queue of completed work
+awaiting officer sign-off" is amended: an officer queue that every closure passes
+through is the bottleneck this design exists to avoid, and the person who can see
+the street is the one with the evidence.
+
+**Scores say what they weigh.** The 0–100 figure is evidence about a photograph's
+freshness and provenance, never a probability that the work was done, and the UI
+never presents it as one.
+
+Data: `research/results/proof-threshold.csv`, `research/data/qr4change/manifest.json`,
+`backend/data/proof-spec.json`.

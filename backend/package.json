@@ -19,6 +19,7 @@
     "layer2:measure": "dotenv -e ../.env -- tsx scripts/measure-layer2.ts",
     "risk:recompute": "dotenv -e ../.env -- tsx scripts/recompute-risk.ts",
     "layer3:measure": "dotenv -e ../.env -- tsx scripts/measure-layer3.ts",
+    "layer4:measure": "dotenv -e ../.env -- tsx scripts/measure-layer4.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "docker exec drishti_postgres psql -U drishti -d postgres -c \"DROP DATABASE IF EXISTS drishti_nyc_test;\" -c \"CREATE DATABASE drishti_nyc_test OWNER drishti;\"",
@@ -39,6 +40,7 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "qrcode": "^1.5.4",
+    "sharp": "^0.35.4",
     "zod": "^3.24.1"
   },
   "devDependencies": {
