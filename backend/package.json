@@ -22,6 +22,8 @@
     "layer4:measure": "dotenv -e ../.env -- tsx scripts/measure-layer4.ts",
     "audit:pages": "dotenv -e ../.env -- tsx scripts/audit-pages.ts",
     "demo:seed": "dotenv -e ../.env -- tsx scripts/demo-seed.ts",
+    "check:layering": "tsx scripts/check-layering.ts",
+    "e2e:setup": "dotenv -e ../.env -- tsx scripts/e2e-setup.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "docker exec drishti_postgres psql -U drishti -d postgres -c \"DROP DATABASE IF EXISTS drishti_nyc_test;\" -c \"CREATE DATABASE drishti_nyc_test OWNER drishti;\"",

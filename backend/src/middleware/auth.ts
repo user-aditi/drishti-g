@@ -5,15 +5,23 @@ import { prisma } from '../lib/prisma.js'
 import { asyncHandler, forbidden, unauthorized } from '../utils/http.js'
 
 /** Populates req.user with the caller, or 401s. */
+/**
+ * The session token a request carries, if any.
+ *
+ * Two ways in: an Authorization header for API clients and the browser's own
+ * fetches, and an httpOnly cookie so Next.js server components can authenticate
+ * a request they are rendering without touching localStorage.
+ */
+function tokenFrom(req: Request): string | null {
+  const header = req.headers.authorization
+  const bearer = header?.startsWith('Bearer ') ? header.slice(7) : null
+  const cookie = (req.cookies as Record<string, string> | undefined)?.[ACCESS_COOKIE]
+  return bearer ?? cookie ?? null
+}
+
 export const authenticate = asyncHandler(
   async (req: Request, _res: Response, next: NextFunction) => {
-    // Two ways in: an Authorization header for API clients and the browser's
-    // own fetches, and an httpOnly cookie so Next.js server components can
-    // authenticate a request they are rendering without touching localStorage.
-    const header = req.headers.authorization
-    const bearer = header?.startsWith('Bearer ') ? header.slice(7) : null
-    const cookie = (req.cookies as Record<string, string> | undefined)?.[ACCESS_COOKIE]
-    const token = bearer ?? cookie
+    const token = tokenFrom(req)
     if (!token) throw unauthorized()
 
     let userId: number
@@ -36,6 +44,49 @@ export const authenticate = asyncHandler(
       agencyId: user.agencyId,
       orgUnitId: user.orgUnitId,
       isSynthetic: user.isSynthetic,
+    }
+    next()
+  },
+)
+
+/**
+ * Who is asking, on a route anyone may use.
+ *
+ * Filing is open to everyone, most of whom have no account, so it cannot demand
+ * a session. But a signed-in resident's report is theirs. The filing route used
+ * to run no authentication at all, so every request filed through the app was
+ * recorded as anonymous: a resident never saw their own requests on My requests,
+ * and the question asking them to confirm a crew's work could never reach them.
+ * Found by the end-to-end tests, which filed as a signed-in resident through the
+ * real route; the demo seed had hidden it by writing the reporter directly.
+ *
+ * A missing, expired or invalid session, or a deactivated account, is simply
+ * anonymous here. Refusing a report because of a stale cookie would be worse
+ * than filing it without a name.
+ */
+export const optionalAuthenticate = asyncHandler(
+  async (req: Request, _res: Response, next: NextFunction) => {
+    const token = tokenFrom(req)
+    if (!token) return next()
+
+    let userId: number
+    try {
+      userId = Number(verifyToken(token, 'access').sub)
+    } catch {
+      return next()
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (user && user.isActive) {
+      req.user = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        agencyId: user.agencyId,
+        orgUnitId: user.orgUnitId,
+        isSynthetic: user.isSynthetic,
+      }
     }
     next()
   },

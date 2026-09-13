@@ -29,37 +29,12 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
 import { verifyChain } from '../src/services/audit.js'
+import { checkLayer } from './layering.js'
 
 const prisma = new PrismaClient()
 const FRACTIONS = [0.25, 0.5, 0.75]
 const SWEEP_MS = Number(process.env.ESCALATION_SWEEP_MS ?? 300_000)
 
-const LOWER_LAYER_FILES = [
-  // Layer 0
-  'src/routes/auth.ts',
-  'src/routes/system.ts',
-  'src/routes/requests.ts',
-  'src/routes/taxonomy.ts',
-  'src/routes/boards.ts',
-  'src/routes/map.ts',
-  'src/routes/audit.ts',
-  'src/services/audit.ts',
-  'src/services/routing.ts',
-  'src/services/requestHooks.ts',
-  'src/utils/serialize.ts',
-  'src/config/systemClock.ts',
-  'src/services/status.ts',
-  'src/middleware/rateLimit.ts',
-  // Layer 1
-  'src/routes/officer.ts',
-  'src/routes/supervisor.ts',
-  'src/routes/workOrders.ts',
-  'src/services/assignment.ts',
-  'src/services/workOrder.ts',
-  'src/services/qr.ts',
-  'src/utils/serializeLayer1.ts',
-]
-const LAYER2_TERMS = /\b(escalat\w*|Escalat\w*|COMMISSIONER|commissioner)/
 
 interface Result {
   name: string
@@ -196,23 +171,9 @@ async function gate(): Promise<Result[]> {
 }
 
 function baseline(): Result {
-  const hits: string[] = []
-  for (const file of LOWER_LAYER_FILES) {
-    const source = readFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), 'utf8')
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
-    code.split('\n').forEach((line, i) => {
-      const match = LAYER2_TERMS.exec(line)
-      if (match) hits.push(`${file}:${i + 1} "${match[0]}"`)
-    })
-  }
-  return {
-    name: 'layering',
-    ok: hits.length === 0,
-    detail:
-      hits.length === 0
-        ? `${LOWER_LAYER_FILES.length} Layer 0 and Layer 1 source files reference no Layer 2 concept`
-        : `a lower layer reaches into Layer 2: ${hits.join('; ')}`,
-  }
+  // The file lists and the scan live in layering.ts, shared with CI's check:layering.
+  const result = checkLayer(2)
+  return { name: 'layering', ok: result.ok, detail: result.detail }
 }
 
 async function main() {

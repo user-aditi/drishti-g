@@ -55,3 +55,10 @@ research/data/nyc/routing-parts/
 # are committed; the photographs are not.
 research/data/qr4change/*
 !research/data/qr4change/manifest.json
+
+# End-to-end test artefacts. The session files are signed tokens and must never be
+# committed; the photographs are regenerated on every run.
+frontend/e2e/.auth/
+frontend/e2e/.tmp/
+frontend/test-results/
+frontend/playwright-report/

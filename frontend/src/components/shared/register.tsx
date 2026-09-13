@@ -282,7 +282,7 @@ function PageLink({
     // than it not being there.
     if (disabled) {
         return (
-            <span className={cn(classes, 'border-line text-ink-soft opacity-50')} aria-hidden>
+            <span className={cn(classes, 'border-dashed border-line text-ink-soft')} aria-hidden>
                 {children}
             </span>
         )

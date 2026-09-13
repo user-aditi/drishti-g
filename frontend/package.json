@@ -7,7 +7,8 @@
         "build": "next build",
         "start": "next start -p 3000",
         "lint": "next lint",
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "e2e": "playwright test"
     },
     "dependencies": {
         "@radix-ui/react-avatar": "^1.1.11",
@@ -30,6 +31,8 @@
         "tailwind-merge": "^2.6.0"
     },
     "devDependencies": {
+        "@axe-core/playwright": "^4.13.0",
+        "@playwright/test": "^1.63.0",
         "@tailwindcss/postcss": "^4.0.0",
         "@types/leaflet": "^1.9.15",
         "@types/node": "^22.10.5",

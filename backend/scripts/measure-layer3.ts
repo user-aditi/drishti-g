@@ -27,38 +27,12 @@ import { grieSpec, scoreUnit, SIGNAL_KEYS } from '../src/services/grie.js'
 import { loadSpec, type SpecEnvelope } from '../src/services/modelSpec.js'
 import { signalsOf } from '../src/services/riskScores.js'
 import { unitMonths } from '../src/services/riskSignals.js'
+import { checkLayer } from './layering.js'
 
 const prisma = new PrismaClient()
 const PANEL = fileURLToPath(new URL('../../research/results/nyc-grie-panel.csv', import.meta.url))
 const TOLERANCE = 1e-9
 
-const LOWER_LAYER_FILES = [
-  'src/routes/auth.ts',
-  'src/routes/system.ts',
-  'src/routes/requests.ts',
-  'src/routes/taxonomy.ts',
-  'src/routes/boards.ts',
-  'src/routes/map.ts',
-  'src/routes/audit.ts',
-  'src/services/audit.ts',
-  'src/services/routing.ts',
-  'src/services/requestHooks.ts',
-  'src/utils/serialize.ts',
-  'src/config/systemClock.ts',
-  'src/services/status.ts',
-  'src/middleware/rateLimit.ts',
-  'src/routes/officer.ts',
-  'src/routes/supervisor.ts',
-  'src/routes/workOrders.ts',
-  'src/services/assignment.ts',
-  'src/services/workOrder.ts',
-  'src/services/qr.ts',
-  'src/utils/serializeLayer1.ts',
-  'src/routes/escalations.ts',
-  'src/services/escalation.ts',
-  'src/utils/serializeLayer2.ts',
-]
-const LAYER3_TERMS = /\b(RiskScore|riskScore|risk_scores|grie|GRIE|Grie|gcce|GCCE|ADMIN)\b/
 
 interface Result {
   name: string
@@ -202,23 +176,9 @@ function routing(): Result {
 }
 
 function layering(): Result {
-  const hits: string[] = []
-  for (const file of LOWER_LAYER_FILES) {
-    const source = readFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), 'utf8')
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
-    code.split('\n').forEach((line, i) => {
-      const match = LAYER3_TERMS.exec(line)
-      if (match) hits.push(`${file}:${i + 1} "${match[0]}"`)
-    })
-  }
-  return {
-    name: 'layering',
-    ok: hits.length === 0,
-    detail:
-      hits.length === 0
-        ? `${LOWER_LAYER_FILES.length} Layer 0-2 source files reference no Layer 3 concept`
-        : `a lower layer reaches into Layer 3: ${hits.join('; ')}`,
-  }
+  // The file lists and the scan live in layering.ts, shared with CI's check:layering.
+  const result = checkLayer(3)
+  return { name: 'layering', ok: result.ok, detail: result.detail }
 }
 
 async function main() {

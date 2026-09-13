@@ -30,27 +30,10 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
 import { verifyChain } from '../src/services/audit.js'
+import { checkLayer } from './layering.js'
 
 const prisma = new PrismaClient()
 
-/** The baseline's source. Layer 1 lives in other files and may not reach in. */
-const LAYER0_FILES = [
-  'src/routes/auth.ts',
-  'src/routes/system.ts',
-  'src/routes/requests.ts',
-  'src/routes/taxonomy.ts',
-  'src/routes/boards.ts',
-  'src/routes/map.ts',
-  'src/routes/audit.ts',
-  'src/services/audit.ts',
-  'src/services/routing.ts',
-  'src/services/requestHooks.ts',
-  'src/utils/serialize.ts',
-  'src/config/systemClock.ts',
-  'src/services/status.ts',
-  'src/middleware/rateLimit.ts',
-]
-const LAYER1_TERMS = /\b(officer|supervisor|posting|assignment|assignedOfficer|workOrder|work_order|OFFICER|SUPERVISOR)\w*/
 
 interface Result {
   name: string
@@ -133,25 +116,9 @@ async function latency(): Promise<Result> {
 }
 
 function baseline(): Result {
-  const hits: string[] = []
-  for (const file of LAYER0_FILES) {
-    const source = readFileSync(fileURLToPath(new URL(`../${file}`, import.meta.url)), 'utf8')
-    const code = source
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/(^|[^:])\/\/.*$/gm, '$1')
-    code.split('\n').forEach((line, i) => {
-      const match = LAYER1_TERMS.exec(line)
-      if (match) hits.push(`${file}:${i + 1} "${match[0]}"`)
-    })
-  }
-  return {
-    name: 'baseline',
-    ok: hits.length === 0,
-    detail:
-      hits.length === 0
-        ? `${LAYER0_FILES.length} Layer 0 source files reference no Layer 1 concept (comments excluded)`
-        : `Layer 0 reaches into Layer 1: ${hits.join('; ')}`,
-  }
+  // The file lists and the scan live in layering.ts, shared with CI's check:layering.
+  const result = checkLayer(1)
+  return { name: 'baseline', ok: result.ok, detail: result.detail }
 }
 
 async function chain(): Promise<Result> {

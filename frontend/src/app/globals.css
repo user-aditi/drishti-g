@@ -59,7 +59,7 @@
      * grey someone could not find, and it fails contrast on the way. */
     --ink: #12161D;
     --ink-mid: #3D4553;
-    --ink-soft: #6B7383;
+    --ink-soft: #586070;
 
     /* Borders carry structure here, so there is one radius and almost no
        shadow. The shadow token exists for things that genuinely float above

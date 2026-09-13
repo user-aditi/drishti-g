@@ -3,7 +3,7 @@ import { Channel, Prisma, RequestStatus } from '@prisma/client'
 import { z } from 'zod'
 import { referenceDate } from '../config/systemClock.js'
 import { prisma } from '../lib/prisma.js'
-import { authenticate, requireAgent } from '../middleware/auth.js'
+import { authenticate, optionalAuthenticate, requireAgent } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rateLimit.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
@@ -56,6 +56,8 @@ requestsRouter.post(
     max: 20,
     message: 'Too many requests filed from here in the last minute. Wait a moment and try again.',
   }),
+  // Anyone may file; a signed-in resident's filing is attributed to them.
+  optionalAuthenticate,
   validate(fileSchema),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof fileSchema>
