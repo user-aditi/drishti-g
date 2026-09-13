@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { LayerMark, StaffName } from '@/components/layer1/marks'
 import { AcknowledgeControl } from '@/components/layer2/acknowledge-control'
 import { ErrorNotice } from '@/components/shared/notices'
+import { CsvLink } from '@/components/shared/csv-link'
 import { PageHeading, PageShell } from '@/components/shared/page-heading'
 import { ReferenceDate } from '@/components/shared/reference-date'
 import {
@@ -79,7 +80,12 @@ export default async function EscalationsPageView({
         <PageShell>
             <PageHeading
                 title="Escalations"
-                actions={<LayerMark layer={2} />}
+                actions={
+                    <>
+                        <CsvLink path={`/escalations/export/csv?openOnly=${showAll ? 'false' : 'true'}`} />
+                        <LayerMark layer={2} />
+                    </>
+                }
                 description={`${user.agency?.name ?? 'Your agency'}: requests that have climbed past their officer — to the supervisor when they pass their derived deadline, to the borough commissioner past twice their service level, or sooner when someone raised them by hand.`}
             />
 

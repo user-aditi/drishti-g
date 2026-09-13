@@ -18,6 +18,7 @@ export const forbidden = (m = 'You do not have access to this') => new AppError(
 export const notFound = (m = 'Not found') => new AppError(404, m)
 export const conflict = (m: string) => new AppError(409, m)
 export const unprocessable = (m: string, d?: unknown) => new AppError(422, m, d)
+export const gone = (m: string) => new AppError(410, m)
 
 type Handler = (req: Request, res: Response, next: NextFunction) => Promise<unknown>
 

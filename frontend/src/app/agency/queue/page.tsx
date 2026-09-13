@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { QueueFilters } from './filters'
+import { CsvLink } from '@/components/shared/csv-link'
 import { PageHeading, PageShell } from '@/components/shared/page-heading'
 import { RequestRegister } from '@/components/request/request-register'
 import { ErrorNotice } from '@/components/shared/notices'
@@ -83,6 +84,7 @@ export default async function AgencyQueuePage({ searchParams }: { searchParams: 
         <PageShell>
             <PageHeading
                 title={user.agency ? `${user.agency.name} queue` : 'Agency queue'}
+                actions={<CsvLink path={`/requests/export/csv${toQuery({ ...filters, sort })}`} />}
                 description={
                     user.agency
                         ? `Every ${user.agency.code} service request in Brooklyn. Accountability here is the agency's, not any one person's — which is how 311 works, and all its data records.`

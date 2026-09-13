@@ -7,6 +7,7 @@ import { authenticate, requireRole } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { acknowledge, escalate, holdsRung, LEVEL_NAME, TOP_LEVEL } from '../services/escalation.js'
 import { asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
+import { EXPORT_LIMIT, sendCsv, toCsv } from '../utils/csv.js'
 import { escalationView, LAYER2_INCLUDE, layer2Request } from '../utils/serializeLayer2.js'
 import type { AuthUser } from '../types/express.js'
 
@@ -248,5 +249,50 @@ escalationsRouter.post(
       include: LAYER2_INCLUDE,
     })
     res.json({ ...layer2Request(updated, referenceDate()), acknowledgeable: acknowledgeableBy(user, updated) })
+  }),
+)
+
+/** The escalation register as CSV: one row per rung climbed, in this agency. */
+escalationsRouter.get(
+  '/escalations/export/csv',
+  authenticate,
+  requireRole(...SENIOR),
+  asyncHandler(async (req, res) => {
+    const openOnly = req.query.openOnly !== 'false'
+    const rungs = await prisma.escalation.findMany({
+      where: {
+        request: {
+          agencyId: req.user!.agencyId ?? -1,
+          ...(openOnly ? { status: { not: RequestStatus.CLOSED } } : {}),
+        },
+      },
+      include: {
+        request: { select: { srNumber: true, status: true, orgUnit: { select: { code: true } } } },
+        raisedBy: { select: { name: true } },
+        toUser: { select: { name: true } },
+        acknowledgedBy: { select: { name: true } },
+      },
+      orderBy: [{ at: 'desc' }],
+      take: EXPORT_LIMIT,
+    })
+    sendCsv(
+      res,
+      'escalations',
+      toCsv(rungs, [
+        { header: 'SR number', value: (r) => r.request.srNumber },
+        { header: 'Request status', value: (r) => r.request.status },
+        { header: 'Board', value: (r) => r.request.orgUnit?.code },
+        { header: 'Rung', value: (r) => LEVEL_NAME[r.toLevel] ?? r.toLevel },
+        { header: 'Trigger', value: (r) => r.trigger },
+        { header: 'Reason', value: (r) => r.reason },
+        { header: 'Raised by', value: (r) => r.raisedBy?.name ?? 'escalation sweep' },
+        { header: 'Reached', value: (r) => r.toUser?.name ?? 'nobody holds this rung' },
+        { header: 'Escalated', value: (r) => r.at },
+        { header: 'Acknowledged', value: (r) => r.acknowledgedAt },
+        { header: 'Acknowledged by', value: (r) => r.acknowledgedBy?.name },
+        { header: 'Acknowledgement', value: (r) => r.acknowledgeNote },
+        { header: 'Resolved', value: (r) => r.resolvedAt },
+      ]),
+    )
   }),
 )

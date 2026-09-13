@@ -834,6 +834,10 @@ model WorkPhoto {
   exifLat     Float?
   exifLng     Float?
   uploadedAt  DateTime  @default(now())
+  /// When the file was deleted under the retention rule for refused submissions.
+  /// The row stays, hashes and all: removing the picture must not let the same
+  /// picture be sent again as new.
+  purgedAt    DateTime?
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 

@@ -75,6 +75,23 @@ cd backend && npm run dev
 cd frontend && npm install && npm run dev
 ```
 
+### Production images
+
+```bash
+JWT_SECRET=$(openssl rand -hex 32) docker compose -f docker-compose.prod.yml up --build
+```
+
+The same stack built for real: the API compiled to JavaScript and run with
+production dependencies only, the web app as a Next standalone build, both as an
+unprivileged user with health checks, and nothing mounted from the source tree.
+The API refuses to start in production with the example `JWT_SECRET`. Session
+cookies are marked Secure, which browsers accept on `http://localhost`; anywhere
+else, put it behind HTTPS (or set `COOKIE_SECURE=false` knowingly).
+
+Photographs a crew sent with a submission the checks refused are removed after
+`REFUSED_PHOTO_RETENTION_DAYS` (30 by default) by a daily sweep; their hashes are
+kept, so the same picture sent again is still caught.
+
 ### Loading the real data
 
 The corpus is not vendored — it is 150MB of public data, re-pullable at any time.

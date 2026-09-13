@@ -73,6 +73,19 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
 
+  # The production images build: compiled API, standalone Next server. Building
+  # is the check — a Dockerfile that only fails when someone deploys is found
+  # at the worst possible moment.
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - name: Build the production images
+        run: docker compose -f docker-compose.prod.yml build
+        env:
+          JWT_SECRET: ci-build-only-secret-never-used-to-sign-anything
+
   e2e:
     runs-on: ubuntu-latest
     needs: [backend, frontend]

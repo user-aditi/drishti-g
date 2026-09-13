@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { CsvLink } from '@/components/shared/csv-link'
 import { PageHeading, PageShell } from '@/components/shared/page-heading'
 import { ErrorNotice } from '@/components/shared/notices'
 import { ReferenceDate } from '@/components/shared/reference-date'
@@ -77,6 +78,7 @@ export default async function BoardsPage({
         <PageShell>
             <PageHeading
                 title="Community boards"
+                actions={<CsvLink path={`/boards/export/csv${selected ? `?agencyId=${selected.id}` : ''}`} />}
                 description="Brooklyn's eighteen community boards, with the volume, backlog and typical closing time behind each. Boards are the smallest area 311 attributes a request to."
             />
 

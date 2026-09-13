@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import { grieSpec, type GrieSpec } from '../services/grie.js'
 import { NoModelError, recompute } from '../services/riskScores.js'
+import { sendCsv, toCsv } from '../utils/csv.js'
 import { asyncHandler, badRequest, notFound } from '../utils/http.js'
 
 /**
@@ -155,5 +156,47 @@ riskRouter.post(
       if (err instanceof NoModelError) throw notFound(err.message)
       throw err
     }
+  }),
+)
+
+/** One month's risk register as CSV, every unit, with what then happened. */
+riskRouter.get(
+  '/units/export/csv',
+  asyncHandler(async (req, res) => {
+    const spec = loaded()
+    const parsed = unitsSchema.safeParse(req.query)
+    if (!parsed.success) throw badRequest('Invalid filters', parsed.error.flatten())
+    const q = parsed.data
+    const latest = await prisma.riskScore.findFirst({
+      where: { modelVersion: spec.modelVersion },
+      orderBy: { month: 'desc' },
+      select: { month: true },
+    })
+    if (!latest) throw badRequest('No scores have been computed yet')
+    const month = q.month ?? monthKey(latest.month)
+    const rows = await prisma.riskScore.findMany({
+      where: {
+        modelVersion: spec.modelVersion,
+        month: monthStart(month),
+        ...(q.agency ? { agency: { code: q.agency } } : {}),
+      },
+      include: { agency: { select: { code: true } }, orgUnit: { select: { code: true, name: true } } },
+      orderBy: [{ agency: { code: 'asc' } }, { score: 'desc' }],
+    })
+    sendCsv(
+      res,
+      `risk-register-${month}`,
+      toCsv(rows, [
+        { header: 'Month', value: () => month },
+        { header: 'Agency', value: (r) => r.agency.code },
+        { header: 'Board', value: (r) => r.orgUnit.code },
+        { header: 'Board name', value: (r) => r.orgUnit.name },
+        { header: 'Score', value: (r) => Number(r.score.toFixed(3)) },
+        { header: 'Probability', value: (r) => Number(r.probability.toFixed(3)) },
+        { header: 'Needs review', value: (r) => r.needsReview },
+        { header: 'Next-month breach rate', value: (r) => (r.nextBreachRate === null ? null : Number(r.nextBreachRate.toFixed(3))) },
+        { header: 'Model', value: (r) => r.modelVersion },
+      ]),
+    )
   }),
 )

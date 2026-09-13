@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { referenceDate } from '../config/systemClock.js'
 import { prisma } from '../lib/prisma.js'
 import { z } from 'zod'
+import { sendCsv, toCsv } from '../utils/csv.js'
 import { asyncHandler, badRequest } from '../utils/http.js'
 
 export const boardsRouter: Router = Router()
@@ -214,5 +215,28 @@ boardsRouter.get(
     const hit = cached.get(keyFor(now, agencyId))
     const fresh = hit !== undefined && Date.now() - hit.at < TTL_MS
     res.json(fresh ? hit.body : await load(now, agencyId))
+  }),
+)
+
+/** The rollup as CSV: public, like the page, with the same agency filter. */
+boardsRouter.get(
+  '/export/csv',
+  asyncHandler(async (req, res) => {
+    const parsed = querySchema.safeParse(req.query)
+    if (!parsed.success) throw badRequest('Invalid filters', parsed.error.flatten())
+    const rows = await load(referenceDate(), parsed.data.agencyId ?? null)
+    sendCsv(
+      res,
+      'community-boards',
+      toCsv(rows, [
+        { header: 'Board', value: (r) => r.code },
+        { header: 'Name', value: (r) => r.name },
+        { header: 'Requests', value: (r) => r.total },
+        { header: 'Open', value: (r) => r.open },
+        { header: 'Closed', value: (r) => r.closed },
+        { header: 'Past derived deadline', value: (r) => r.overdue },
+        { header: 'Median hours to close', value: (r) => (r.medianResolutionHours === null ? null : Number(r.medianResolutionHours.toFixed(1))) },
+      ]),
+    )
   }),
 )

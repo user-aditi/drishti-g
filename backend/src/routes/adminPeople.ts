@@ -6,6 +6,7 @@ import { authenticate, requireRole } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { reassignAwayFrom } from '../services/assignment.js'
 import * as audit from '../services/audit.js'
+import { sendCsv, toCsv } from '../utils/csv.js'
 import { asyncHandler, badRequest, notFound } from '../utils/http.js'
 
 /**
@@ -116,6 +117,42 @@ adminPeopleRouter.get(
  * One person: every post they have held, and what the chain records about them —
  * both what was done to their account and what they did.
  */
+/** Every member of staff as CSV, with their current post and open work. */
+adminPeopleRouter.get(
+  '/people/export/csv',
+  asyncHandler(async (_req, res) => {
+    const people = await prisma.user.findMany({
+      where: { role: { in: STAFF } },
+      orderBy: [{ agencyId: { sort: 'asc', nulls: 'last' } }, { role: 'asc' }, { name: 'asc' }],
+      select: {
+        name: true,
+        email: true,
+        role: true,
+        isSynthetic: true,
+        isActive: true,
+        agency: { select: { code: true } },
+        postings: { where: { endedAt: null }, select: { startedAt: true, orgUnit: { select: { code: true } } } },
+        _count: { select: { assignedRequests: { where: { status: { not: RequestStatus.CLOSED } } } } },
+      },
+    })
+    sendCsv(
+      res,
+      'staff',
+      toCsv(people, [
+        { header: 'Name', value: (p) => p.name },
+        { header: 'Email', value: (p) => p.email },
+        { header: 'Role', value: (p) => p.role },
+        { header: 'Agency', value: (p) => p.agency?.code },
+        { header: 'Posted to', value: (p) => p.postings.map((x) => x.orgUnit.code).join(' ') },
+        { header: 'Posted since', value: (p) => p.postings[0]?.startedAt },
+        { header: 'Open requests', value: (p) => (p.role === Role.OFFICER ? p._count.assignedRequests : null) },
+        { header: 'Active', value: (p) => p.isActive },
+        { header: 'Synthetic', value: (p) => p.isSynthetic },
+      ]),
+    )
+  }),
+)
+
 adminPeopleRouter.get(
   '/people/:id',
   asyncHandler(async (req, res) => {

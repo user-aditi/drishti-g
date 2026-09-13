@@ -22,7 +22,8 @@ import { recordRun, registerJob } from '../lib/jobRuns.js'
 import { ProofOutcome, RequestStatus, type Prisma, type PrismaClient } from '@prisma/client'
 import { env } from '../config/env.js'
 import { distanceMetres } from './exif.js'
-import { readFile } from 'node:fs/promises'
+import { readFile, unlink } from 'node:fs/promises'
+import * as audit from './audit.js'
 import { storedPath } from '../middleware/photos.js'
 import { dHashOf, hamming } from './proofImage.js'
 import { notify } from './notifications.js'
@@ -498,4 +499,100 @@ export async function describeProofProgress(
     }
   }
   return steps
+}
+
+/**
+ * The retention rule for refused submissions: delete the photographs, keep what
+ * they proved.
+ *
+ * A submission the checks refused was not accepted as proof of anything, and its
+ * photographs are pictures of a street — sometimes with people or number plates
+ * in them — that this system has no reason to keep indefinitely. After
+ * `REFUSED_PHOTO_RETENTION_DAYS` the files go.
+ *
+ * The rows stay. Their hashes are what stop the same picture being sent again as
+ * new, and deleting them would turn the retention rule into a way to launder a
+ * recycled photograph: wait a month, send it again. The row is stamped
+ * `purgedAt`, and anyone asking for the picture is told it was removed and why.
+ *
+ * Only refusals by the checks. A submission an officer sent back was accepted
+ * as evidence first and argued over after, and its photographs are part of that
+ * argument's record. A crew that later sent better photographs to the same job
+ * turned the job's outcome from refused to something else, so those earlier
+ * photographs are kept too.
+ */
+export async function purgeRefusedPhotos(
+  db: PrismaClient,
+  now: Date = new Date(),
+  retentionDays: number = env.REFUSED_PHOTO_RETENTION_DAYS,
+) {
+  const cutoff = new Date(now.getTime() - retentionDays * 24 * 3_600_000)
+  const due = await db.workPhoto.findMany({
+    where: {
+      purgedAt: null,
+      uploadedAt: { lt: cutoff },
+      workOrder: { completedAt: null, proof: { outcome: ProofOutcome.REJECTED, decidedAt: null } },
+    },
+    select: { id: true, storedName: true, workOrder: { select: { code: true } } },
+  })
+  if (due.length === 0) return { purged: 0, missing: 0 }
+
+  let missing = 0
+  for (const photo of due) {
+    try {
+      await unlink(storedPath(photo.storedName))
+    } catch (err) {
+      // Already gone — a wiped volume, or a previous pass that died after the
+      // unlink. The row is stamped either way, which is the state that is true.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      missing++
+    }
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.workPhoto.updateMany({ where: { id: { in: due.map((p) => p.id) } }, data: { purgedAt: now } })
+    await audit.record(tx, {
+      action: 'proof.photos_purged',
+      entityType: 'retention',
+      entityId: 'refused-photographs',
+      payload: {
+        count: due.length,
+        alreadyMissing: missing,
+        retentionDays,
+        jobs: [...new Set(due.map((p) => p.workOrder.code))],
+      },
+      actorId: null,
+      actorLabel: 'retention sweep',
+      source: 'system',
+    })
+  })
+  return { purged: due.length, missing }
+}
+
+/** Run the retention rule on a timer. Same shape as the other sweeps. */
+export function startRetentionSweep(
+  db: PrismaClient,
+  intervalMs: number,
+  log: (message: string) => void,
+): () => void {
+  let running = false
+  registerJob('photo-retention-sweep', intervalMs)
+  const tick = async () => {
+    if (running) return
+    running = true
+    const startedAt = new Date()
+    try {
+      const result = await purgeRefusedPhotos(db)
+      recordRun('photo-retention-sweep', startedAt, { result })
+      if (result.purged > 0) log(`retention sweep: removed ${result.purged} refused photograph(s)`)
+    } catch (err) {
+      recordRun('photo-retention-sweep', startedAt, { error: err })
+      log(`retention sweep failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      running = false
+    }
+  }
+  const timer = setInterval(() => void tick(), intervalMs)
+  void tick()
+  return () => clearInterval(timer)
 }

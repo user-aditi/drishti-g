@@ -4,6 +4,8 @@ import { LayerMark } from '@/components/layer1/marks'
 import { RecomputeButton } from '@/components/layer3/admin-actions'
 import { RISK_COLUMNS, RiskRows } from '@/components/layer3/risk-rows'
 import { ErrorNotice } from '@/components/shared/notices'
+import { CsvLink } from '@/components/shared/csv-link'
+import { toQuery } from '@/lib/api-base'
 import { PageHeading, PageShell } from '@/components/shared/page-heading'
 import {
     EmptyRow,
@@ -187,7 +189,12 @@ export default async function RiskRegisterPage({
         <PageShell>
             <PageHeading
                 title="Risk register"
-                actions={<LayerMark layer={3} />}
+                actions={
+                    <>
+                        <CsvLink path={`/risk/units/export/csv${toQuery({ month: data?.month ?? month, agency })}`} />
+                        <LayerMark layer={3} />
+                    </>
+                }
                 description="Every agency's community boards, scored month by month on NYC's own records: the chance each is among the worst fifth for missed deadlines the following month, and — where that month is on record — what happened."
             />
 

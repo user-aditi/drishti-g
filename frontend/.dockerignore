@@ -1,2 +1,7 @@
 node_modules
 .next
+e2e/.auth
+e2e/.tmp
+test-results
+playwright-report
+tsconfig.tsbuildinfo

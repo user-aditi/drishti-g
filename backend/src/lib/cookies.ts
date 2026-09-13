@@ -11,7 +11,7 @@ function baseOptions(maxAgeMs: number): CookieOptions {
   return {
     httpOnly: true,
     sameSite: 'lax',
-    secure: env.isProduction,
+    secure: env.cookieSecure,
     path: '/',
     maxAge: maxAgeMs,
   }
@@ -26,7 +26,7 @@ export function setAuthCookies(res: Response, accessToken: string, refreshToken?
 }
 
 export function clearAuthCookies(res: Response): void {
-  const options: CookieOptions = { httpOnly: true, sameSite: 'lax', secure: env.isProduction, path: '/' }
+  const options: CookieOptions = { httpOnly: true, sameSite: 'lax', secure: env.cookieSecure, path: '/' }
   res.clearCookie(ACCESS_COOKIE, options)
   res.clearCookie(REFRESH_COOKIE, options)
 }

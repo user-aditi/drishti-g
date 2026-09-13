@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ProofChecks } from '@/components/layer4/proof-checks'
-import { messageFrom } from '@/lib/api-error'
+import { ApiError, messageFrom } from '@/lib/api-error'
 import { formatDateTime, relativeTime } from '@/lib/format'
 import { layer1Client } from '@/lib/layer1-api'
 import { layer4Client } from '@/lib/layer4-api'
 import { crewPhotoUrl } from '@/lib/layer4-urls'
+import { megabytes, type UploadProgress } from '@/lib/upload'
 import type { PublicWorkOrder } from '@/types/layer1'
 import type { CrewSubmission } from '@/types/layer4'
 
@@ -37,6 +38,8 @@ export function CrewJob({ code }: { code: string }) {
     const [busy, setBusy] = useState(false)
     const [done, setDone] = useState(false)
     const [submission, setSubmission] = useState<CrewSubmission | null>(null)
+    const [progress, setProgress] = useState<UploadProgress | null>(null)
+    const [dropped, setDropped] = useState(false)
 
     useEffect(() => {
         let cancelled = false
@@ -75,13 +78,23 @@ export function CrewJob({ code }: { code: string }) {
         }
     }, [code])
 
-    async function complete(event: React.FormEvent) {
-        event.preventDefault()
+    /*
+     * Send the job, and survive a bad connection.
+     *
+     * A dropped upload keeps the photographs and the note exactly as they were,
+     * says so, and offers to send again — and sends again by itself the moment
+     * the phone reports it is back online. A retry that finds the first attempt
+     * did arrive (the response was what got lost) is told "already reported",
+     * which is success, so the page reloads the verdict instead of showing an error.
+     */
+    async function send() {
         setBusy(true)
         setError(null)
+        setDropped(false)
+        setProgress(null)
         try {
             if (photos.length > 0) {
-                const result = await layer4Client.completeWithPhotos(code, photos, note.trim() || undefined)
+                const result = await layer4Client.completeWithPhotos(code, photos, note.trim() || undefined, setProgress)
                 setSubmission(result)
                 // A refused submission is not a completion: the form stays open so
                 // the crew can take another photograph and send it again.
@@ -92,11 +105,47 @@ export function CrewJob({ code }: { code: string }) {
                 setDone(true)
             }
         } catch (err) {
-            setError(messageFrom(err, 'That could not be recorded. Try again.'))
+            if (err instanceof ApiError && err.status === 0) {
+                setDropped(true)
+                setError(`${err.message} Your photographs and note are still here — nothing needs taking again.`)
+            } else if (err instanceof ApiError && /already been reported done/.test(err.message)) {
+                // The earlier attempt arrived; only its answer was lost.
+                const seen = await layer4Client.proof(code).catch(() => null)
+                if (seen?.proof) {
+                    setSubmission({
+                        ok: true,
+                        state: 'COMPLETED',
+                        message: seen.message ?? '',
+                        proof: seen.proof,
+                        photos: seen.photos.map((photo) => photo.storedName),
+                    })
+                }
+                setDone(true)
+                setPhotos([])
+            } else {
+                setError(messageFrom(err, 'That could not be recorded. Try again.'))
+            }
         } finally {
             setBusy(false)
+            setProgress(null)
         }
     }
+
+    function complete(event: React.FormEvent) {
+        event.preventDefault()
+        void send()
+    }
+
+    // Back in signal after a dropped upload: try again without being asked.
+    useEffect(() => {
+        if (!dropped) return
+        const retry = () => void send()
+        window.addEventListener('online', retry, { once: true })
+        return () => window.removeEventListener('online', retry)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dropped])
+
+    const photoBytes = photos.reduce((sum, photo) => sum + photo.size, 0)
 
     if (error && !job) {
         return (
@@ -224,8 +273,8 @@ export function CrewJob({ code }: { code: string }) {
                         </p>
                         {photos.length > 0 && (
                             <p className="mt-1 text-base text-ink">
-                                {photos.length} {photos.length === 1 ? 'photograph' : 'photographs'} ready:{' '}
-                                {photos.map((photo) => photo.name).join(', ')}
+                                {photos.length} {photos.length === 1 ? 'photograph' : 'photographs'} ready,{' '}
+                                {megabytes(photoBytes)}: {photos.map((photo) => photo.name).join(', ')}
                             </p>
                         )}
                     </div>
@@ -240,10 +289,23 @@ export function CrewJob({ code }: { code: string }) {
                             onChange={(event) => setNote(event.target.value)}
                         />
                     </div>
+                    {progress && (
+                        <div className="flex flex-col gap-1" aria-live="polite">
+                            <label htmlFor="crew-progress" className="text-base text-ink">
+                                Sending: {megabytes(progress.loaded)} of {megabytes(progress.total)}
+                            </label>
+                            <progress id="crew-progress" max={progress.total} value={progress.loaded} className="h-3 w-full accent-[var(--brand)]" />
+                        </div>
+                    )}
                     <Button type="submit" size="lg" disabled={busy}>
-                        {busy ? 'Sending…' : 'The job is done'}
+                        {busy ? 'Sending…' : dropped ? 'Send again' : 'The job is done'}
                     </Button>
-                    {error && <p className="text-base text-stop">{error}</p>}
+                    {error && (
+                        <p className="text-base text-stop" role="alert">
+                            {error}
+                            {dropped && ' It will also send by itself when the phone is back online.'}
+                        </p>
+                    )}
                     <p className="text-sm text-ink-soft">
                         This code works until {formatDateTime(job.expiresAt)} ({relativeTime(job.expiresAt)}).
                     </p>

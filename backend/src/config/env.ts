@@ -40,6 +40,16 @@ const schema = z.object({
   CITIZEN_GRACE_HOURS: z.coerce.number().int().min(1).default(48),
   /** Layer 4: how often the system looks for submissions whose citizen never answered. */
   PROOF_SWEEP_MS: z.coerce.number().int().min(10_000).default(600_000),
+  /** Layer 4: days a refused submission's photographs stay on disk before they are removed. */
+  REFUSED_PHOTO_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
+  /** Layer 4: how often the retention sweep runs. Daily is plenty for a rule counted in days. */
+  RETENTION_SWEEP_MS: z.coerce.number().int().min(60_000).default(86_400_000),
+  /**
+   * Whether session cookies are marked Secure. Defaults to on in production.
+   * Browsers accept Secure cookies on http://localhost, so a production build
+   * run locally still signs in; anywhere else, production means HTTPS.
+   */
+  COOKIE_SECURE: z.enum(['true', 'false']).optional(),
 
   /*
    * Where the system believes it is standing in time.
@@ -51,7 +61,23 @@ const schema = z.object({
    */
 })
 
-const parsed = schema.safeParse(process.env)
+/*
+ * In production the example secret is refused outright. `.env.example` ships a
+ * placeholder so development works on a fresh clone, and a production image that
+ * booted with it would sign sessions anyone reading the repository could forge.
+ */
+const guarded = schema.superRefine((config, ctx) => {
+  if (config.NODE_ENV !== 'production') return
+  if (/CHANGE_ME/i.test(config.JWT_SECRET) || config.JWT_SECRET.length < 32) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['JWT_SECRET'],
+      message: 'in production, set a random secret of at least 32 characters (not the example value)',
+    })
+  }
+})
+
+const parsed = guarded.safeParse(process.env)
 
 if (!parsed.success) {
   const issues = parsed.error.issues.map((i) => `  - ${i.path.join('.')}: ${i.message}`)
@@ -65,4 +91,6 @@ export const env = {
     .map((o) => o.trim())
     .filter(Boolean),
   isProduction: parsed.data.NODE_ENV === 'production',
+  cookieSecure:
+    parsed.data.COOKIE_SECURE === undefined ? parsed.data.NODE_ENV === 'production' : parsed.data.COOKIE_SECURE === 'true',
 }

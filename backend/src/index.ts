@@ -5,13 +5,14 @@ import { createLogger } from './lib/logger.js'
 import { prisma } from './lib/prisma.js'
 import { warmBoards } from './routes/boards.js'
 import { startEscalationSweep } from './services/escalation.js'
-import { startProofSweep } from './services/proof.js'
+import { startProofSweep, startRetentionSweep } from './services/proof.js'
 
 const log = createLogger('server')
 
 const app = createApp()
 let stopSweep: (() => void) | null = null
 let stopProofSweep: (() => void) | null = null
+let stopRetentionSweep: (() => void) | null = null
 
 const server = app.listen(env.PORT, () => {
   log.info(`listening on http://localhost:${env.PORT}${env.API_PREFIX}`)
@@ -40,6 +41,8 @@ const server = app.listen(env.PORT, () => {
     )
     // Layer 4: submissions whose resident never answered.
     stopProofSweep = startProofSweep(prisma, env.PROOF_SWEEP_MS, (message) => log.info(message))
+    // Layer 4: refused submissions' photographs, removed after the retention period.
+    stopRetentionSweep = startRetentionSweep(prisma, env.RETENTION_SWEEP_MS, (message) => log.info(message))
   }
 
   /*
@@ -57,6 +60,7 @@ async function shutdown(signal: string) {
   log.info(`${signal} received, shutting down`)
   stopSweep?.()
   stopProofSweep?.()
+  stopRetentionSweep?.()
   server.close()
   await prisma.$disconnect()
   process.exit(0)

@@ -10,7 +10,7 @@ import { readExif } from '../services/exif.js'
 import { assess, save, withCitizenVerdict, type Assessment } from '../services/proof.js'
 import { identify } from '../services/proofImage.js'
 import { normaliseCode, stateOf } from '../services/workOrder.js'
-import { AppError, asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
+import { AppError, asyncHandler, badRequest, forbidden, gone, notFound } from '../utils/http.js'
 import { crewLimit } from './workOrders.js'
 
 /**
@@ -38,7 +38,13 @@ function assessmentView(proof: { score: number; checks: unknown; outcome: ProofO
  * disk this process does not own, and a wiped volume must not turn every
  * verification page into an error.
  */
-async function sendPhoto(res: Response, photo: { storedName: string; mimeType: string }) {
+async function sendPhoto(res: Response, photo: { storedName: string; mimeType: string; purgedAt?: Date | null }) {
+  if (photo.purgedAt) {
+    throw gone(
+      `This photograph was removed on ${photo.purgedAt.toISOString().slice(0, 10)} under the retention rule: ` +
+        'the submission it came with was refused.',
+    )
+  }
   let bytes: Buffer
   try {
     bytes = await readFile(storedPath(photo.storedName))

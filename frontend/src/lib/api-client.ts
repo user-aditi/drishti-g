@@ -2,6 +2,7 @@
 
 import { ApiError } from './api-error'
 import { BROWSER_API, toQuery } from './api-base'
+import { uploadForm, type UploadProgress } from './upload'
 import type {
     Area,
     AuthResult,
@@ -74,30 +75,6 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     return (await res.json()) as T
 }
 
-/**
- * A multipart upload. Not through `request()`: setting a JSON content type on
- * form data would break the boundary the browser generates.
- */
-async function upload<T>(path: string, form: FormData): Promise<T> {
-    let res: Response
-    try {
-        res = await fetch(`${BROWSER_API}${path}`, { method: 'POST', credentials: 'include', body: form })
-    } catch {
-        throw new ApiError(0, 'Could not reach the service. Check that the API is running.')
-    }
-    if (!res.ok) {
-        let parsed: { error?: string; message?: string } | null = null
-        try {
-            parsed = await res.json()
-        } catch {
-            // Non-JSON error body — fall back to the status.
-        }
-        throw new ApiError(res.status, parsed?.error ?? parsed?.message ?? `Upload failed (${res.status})`)
-    }
-    return (await res.json()) as T
-}
-
-
 export const apiClient = {
     // ---- Session --------------------------------------------------------- //
 
@@ -141,11 +118,21 @@ export const apiClient = {
     file: (body: NewRequest) => request<FiledRequest>('/requests', { method: 'POST', body }),
 
     /** Photographs of the problem, sent right after filing with the token the filing returned. */
-    attachPhotos: (srNumber: string, photos: File[], token: string) => {
+    attachPhotos: (
+        srNumber: string,
+        photos: File[],
+        token: string,
+        onProgress?: (progress: UploadProgress) => void,
+    ) => {
         const form = new FormData()
-        for (const photo of photos) form.append('photos', photo)
+        // The token first: multer reads fields in order, and the route checks it.
         form.append('token', token)
-        return upload<{ ok: true; count: number }>(`/requests/${encodeURIComponent(srNumber)}/photos`, form)
+        for (const photo of photos) form.append('photos', photo)
+        return uploadForm<{ ok: true; count: number }>(
+            `${BROWSER_API}/requests/${encodeURIComponent(srNumber)}/photos`,
+            form,
+            { onProgress },
+        )
     },
 
     photos: (srNumber: string) =>

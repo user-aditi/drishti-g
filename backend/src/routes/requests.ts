@@ -16,6 +16,7 @@ import { describeProgress, runFiledHooks } from '../services/requestHooks.js'
 import { changeStatus } from '../services/status.js'
 import { nextSrNumber, routeRequest } from '../services/routing.js'
 import { asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
+import { EXPORT_LIMIT, sendCsv, toCsv } from '../utils/csv.js'
 import { publicRequest } from '../utils/serialize.js'
 import { invalidateBoards, warmBoards } from './boards.js'
 
@@ -192,7 +193,86 @@ requestsRouter.get(
     if (!parsed.success) throw badRequest('Invalid filters', parsed.error.flatten())
     const q = parsed.data
     const now = referenceDate()
+    const where = queueWhere(q, req.user!, now)
 
+    const [rows, total] = await Promise.all([
+      prisma.serviceRequest.findMany({
+        where,
+        include: REQUEST_INCLUDE,
+        orderBy: SORTS[q.sort],
+        skip: (q.page - 1) * q.pageSize,
+        take: q.pageSize,
+      }),
+      prisma.serviceRequest.count({ where }),
+    ])
+
+    res.json({
+      rows: rows.map((r) => publicRequest(r, now)),
+      total,
+      page: q.page,
+      pageSize: q.pageSize,
+      referenceDate: now,
+    })
+  }),
+)
+
+/**
+ * The queue as CSV, with exactly the filters the screen has. Not paged: the
+ * whole result, up to the export limit, in the screen's order.
+ */
+requestsRouter.get(
+  '/export/csv',
+  authenticate,
+  requireAgent,
+  asyncHandler(async (req, res) => {
+    const parsed = listSchema.safeParse(req.query)
+    if (!parsed.success) throw badRequest('Invalid filters', parsed.error.flatten())
+    const q = parsed.data
+    const now = referenceDate()
+    const where = queueWhere(q, req.user!, now)
+
+    const total = await prisma.serviceRequest.count({ where })
+    if (total > EXPORT_LIMIT) {
+      throw badRequest(
+        `That is ${total.toLocaleString('en-US')} requests; one export holds ${EXPORT_LIMIT.toLocaleString('en-US')}. Narrow the filters first.`,
+      )
+    }
+    const rows = await prisma.serviceRequest.findMany({ where, include: REQUEST_INCLUDE, orderBy: SORTS[q.sort] })
+    const view = rows.map((r) => publicRequest(r, now))
+    sendCsv(
+      res,
+      'agency-queue',
+      toCsv(view, [
+        { header: 'SR number', value: (r) => r.srNumber },
+        { header: 'Status', value: (r) => r.status },
+        { header: 'Type', value: (r) => r.type?.name },
+        { header: 'Descriptor', value: (r) => r.descriptor?.name },
+        { header: 'Agency', value: (r) => r.agency?.code },
+        { header: 'Board', value: (r) => r.orgUnit?.code },
+        { header: 'Address', value: (r) => r.address },
+        { header: 'ZIP', value: (r) => r.zip },
+        { header: 'Channel', value: (r) => r.channel },
+        { header: 'Filed', value: (r) => r.createdAt },
+        { header: 'Closed', value: (r) => r.closedAt },
+        // Ours, not the City's: NYC publishes no due date for these types.
+        { header: 'Derived deadline', value: (r) => r.slaDueAt },
+        { header: 'Past derived deadline', value: (r) => r.isOverdue },
+        { header: 'From NYC Open Data', value: (r) => r.isImported },
+        { header: 'Resolution', value: (r) => r.resolutionNote },
+      ]),
+    )
+  }),
+)
+
+/**
+ * The queue's filters as a query, shared by the screen and its export so the
+ * two can never disagree about what "this view" contains.
+ */
+function queueWhere(
+  q: z.infer<typeof listSchema>,
+  user: NonNullable<Request['user']>,
+  now: Date,
+): Prisma.ServiceRequestWhereInput {
     // ANDed as separate conditions, not spread into one object. Three filters
     // constrain `status` — an explicit status, "open only" and "overdue" — and
     // spreading them let the last silently overwrite the first: choosing Pending
@@ -201,7 +281,7 @@ requestsRouter.get(
       // An agent sees their own agency's work. Agency-level accountability is
       // the whole of Layer 0's access model — there is nothing finer to scope
       // to, because NYC records no individual ownership.
-      { agencyId: q.agencyId ?? req.user!.agencyId ?? undefined },
+      { agencyId: q.agencyId ?? user.agencyId ?? undefined },
     ]
     if (q.orgUnitId) conditions.push({ orgUnitId: q.orgUnitId })
     if (q.typeId) conditions.push({ typeId: q.typeId })
@@ -230,28 +310,8 @@ requestsRouter.get(
         ],
       })
     }
-    const where: Prisma.ServiceRequestWhereInput = { AND: conditions }
-
-    const [rows, total] = await Promise.all([
-      prisma.serviceRequest.findMany({
-        where,
-        include: REQUEST_INCLUDE,
-        orderBy: SORTS[q.sort],
-        skip: (q.page - 1) * q.pageSize,
-        take: q.pageSize,
-      }),
-      prisma.serviceRequest.count({ where }),
-    ])
-
-    res.json({
-      rows: rows.map((r) => publicRequest(r, now)),
-      total,
-      page: q.page,
-      pageSize: q.pageSize,
-      referenceDate: now,
-    })
-  }),
-)
+    return { AND: conditions }
+}
 
 // ---------------------------------------------------------------------------
 // Before filing: is this already reported?

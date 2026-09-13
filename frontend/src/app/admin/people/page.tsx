@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { LayerMark } from '@/components/layer1/marks'
 import { ErrorNotice } from '@/components/shared/notices'
+import { CsvLink } from '@/components/shared/csv-link'
 import { PageHeading, PageShell } from '@/components/shared/page-heading'
 import {
     EmptyRow,
@@ -73,7 +74,12 @@ export default async function PeoplePageView({
         <PageShell>
             <PageHeading
                 title="People"
-                actions={<LayerMark layer={3} />}
+                actions={
+                    <>
+                        <CsvLink path="/admin/people/export/csv" label="Download all staff as CSV" />
+                        <LayerMark layer={3} />
+                    </>
+                }
                 description="Staff by agency and post. Open a person to move their posting or switch their account off; both go on the audit chain, and an officer's open requests are handed on when they can no longer answer for them."
             />
 

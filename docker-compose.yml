@@ -1,3 +1,5 @@
+# Development: source mounted, dev servers, the tools image for migrations.
+# For the production images, see docker-compose.prod.yml.
 services:
   postgres:
     image: postgres:16
@@ -30,6 +32,7 @@ services:
   setup:
     build:
       context: ./backend
+      target: tools
     container_name: drishti_setup
     env_file: .env
     environment:
@@ -53,6 +56,7 @@ services:
   api:
     build:
       context: ./backend
+      target: dev
     container_name: drishti_api
     env_file: .env
     environment:
@@ -78,6 +82,7 @@ services:
   web:
     build:
       context: ./frontend
+      target: dev
     container_name: drishti_web
     environment:
       # The browser talks to the API directly; the Next server talks to it over

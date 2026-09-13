@@ -8,6 +8,7 @@ import { apiClient } from '@/lib/api-client'
 import { messageFrom } from '@/lib/api-error'
 import { BROOKLYN_BOUNDS, CHANNEL_LABEL, FILEABLE_CHANNELS } from '@/lib/constants'
 import { formatHours } from '@/lib/format'
+import { megabytes, type UploadProgress } from '@/lib/upload'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -73,6 +74,7 @@ export function FileWizard({ types, boards }: { types: RequestType[]; boards: Bo
     const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [filed, setFiled] = useState<FiledRequest | null>(null)
+    const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null)
     const [photoOutcome, setPhotoOutcome] = useState<{ sent: number } | { error: string } | null>(null)
 
     const type = useMemo(() => types.find((t) => t.id === typeId) ?? null, [types, typeId])
@@ -205,7 +207,7 @@ export function FileWizard({ types, boards }: { types: RequestType[]; boards: Bo
         // must never cost someone the report itself.
         if (photos.length > 0) {
             try {
-                const result = await apiClient.attachPhotos(created.srNumber, photos, created.photoToken)
+                const result = await apiClient.attachPhotos(created.srNumber, photos, created.photoToken, setUploadProgress)
                 setPhotoOutcome({ sent: result.count })
             } catch (err) {
                 setPhotoOutcome({ error: messageFrom(err, 'The photographs could not be sent.') })
@@ -649,7 +651,11 @@ export function FileWizard({ types, boards }: { types: RequestType[]; boards: Bo
 
                 {step === 'confirm' ? (
                     <Button type="button" onClick={submit} disabled={submitting}>
-                        {submitting ? 'Filing…' : 'File this request'}
+                        {uploadProgress
+                            ? `Sending photographs: ${megabytes(uploadProgress.loaded)} of ${megabytes(uploadProgress.total)}`
+                            : submitting
+                              ? 'Filing…'
+                              : 'File this request'}
                         {!submitting && <Check aria-hidden />}
                     </Button>
                 ) : (
