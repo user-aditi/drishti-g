@@ -19,6 +19,7 @@
  * lived through years ago — unless this system has since acted on it, at which
  * point it is live work and the ladder applies.
  */
+import { recordRun, registerJob } from '../lib/jobRuns.js'
 import {
   EscalationTrigger,
   Prisma,
@@ -201,15 +202,19 @@ export function startEscalationSweep(
   log: (message: string) => void,
 ): () => void {
   let running = false
+  registerJob('escalation-sweep', intervalMs)
   const tick = async () => {
     if (running) return
     running = true
+    const startedAt = new Date()
     try {
       const result = await sweep(db)
+      recordRun('escalation-sweep', startedAt, { result })
       if (result.rungs > 0) {
         log(`escalation sweep: ${result.rungs} rung(s) climbed across ${result.requests} request(s)`)
       }
     } catch (err) {
+      recordRun('escalation-sweep', startedAt, { error: err })
       log(`escalation sweep failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       running = false
@@ -218,4 +223,78 @@ export function startEscalationSweep(
   const timer = setInterval(() => void tick(), intervalMs)
   void tick()
   return () => clearInterval(timer)
+}
+
+/**
+ * Whether this person holds the rung an escalation reached: the role at that
+ * rung, in the request's agency. Not only the named `toUser` — a rung is a
+ * post, and whoever holds it now answers for what reached it, including when
+ * the person it first reached has since moved on.
+ */
+export function holdsRung(
+  user: { role: Role; agencyId: number | null },
+  escalation: { toLevel: number },
+  request: { agencyId: number },
+): boolean {
+  return ROLE_AT[escalation.toLevel] === user.role && user.agencyId === request.agencyId
+}
+
+export interface AcknowledgeInput {
+  escalationId: number
+  userId: number
+  userLabel: string
+  note: string
+  at: Date
+}
+
+/**
+ * Say "I have this" to a rung, with a sentence about what happens next.
+ *
+ * Once per rung. A second acknowledgement would overwrite the first person's
+ * word with the second's, and the record of who took it on first is the part
+ * worth keeping. The conditional update, not a read-then-write, is what makes
+ * that hold when two people press the button at once.
+ */
+export async function acknowledge(tx: Prisma.TransactionClient, input: AcknowledgeInput): Promise<boolean> {
+  const { count } = await tx.escalation.updateMany({
+    where: { id: input.escalationId, acknowledgedAt: null },
+    data: { acknowledgedAt: input.at, acknowledgedById: input.userId, acknowledgeNote: input.note },
+  })
+  if (count === 0) return false
+
+  const escalation = await tx.escalation.findUniqueOrThrow({ where: { id: input.escalationId } })
+  await audit.record(tx, {
+    action: 'escalation.acknowledged',
+    entityType: 'request',
+    entityId: escalation.requestId,
+    payload: { escalationId: escalation.id, toLevel: escalation.toLevel, note: input.note },
+    actorId: input.userId,
+    actorLabel: input.userLabel,
+  })
+  return true
+}
+
+/**
+ * Resolve a request's escalations when it closes, and reopen them if it is
+ * reopened. Registered as a status-change hook.
+ *
+ * Without it the register could only say "open" or "closed" about the request,
+ * never how long the senior person had it before it was dealt with — which is
+ * the figure that says whether escalating did anything.
+ */
+export async function resolveEscalationsOnClose(
+  tx: Prisma.TransactionClient,
+  change: { request: { id: number }; from: RequestStatus; to: RequestStatus; at: Date },
+): Promise<void> {
+  if (change.to === RequestStatus.CLOSED) {
+    await tx.escalation.updateMany({
+      where: { requestId: change.request.id, resolvedAt: null },
+      data: { resolvedAt: change.at },
+    })
+  } else if (change.from === RequestStatus.CLOSED) {
+    await tx.escalation.updateMany({
+      where: { requestId: change.request.id, resolvedAt: { not: null } },
+      data: { resolvedAt: null },
+    })
+  }
 }

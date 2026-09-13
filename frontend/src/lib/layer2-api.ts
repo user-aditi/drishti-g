@@ -8,4 +8,9 @@ export const layer2Client = {
             method: 'POST',
             body: { reason },
         }),
+    acknowledge: (escalationId: number, note: string) =>
+        request<EscalatedRequest>(`/escalations/${escalationId}/acknowledge`, {
+            method: 'POST',
+            body: { note },
+        }),
 }

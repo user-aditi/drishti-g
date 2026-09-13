@@ -74,7 +74,8 @@ export const getTaxonomy = () =>
     // is the one read worth caching — every filter dropdown in the app wants it.
     serverFetch<RequestType[]>('/taxonomy', { revalidate: 300 })
 
-export const getBoards = () => serverFetch<Board[]>('/boards', { revalidate: 60 })
+export const getBoards = (agencyId?: number) =>
+    serverFetch<Board[]>(`/boards${agencyId ? `?agencyId=${agencyId}` : ''}`, { revalidate: 60 })
 
 export const getAreas = () => serverFetch<Area[]>('/areas', { revalidate: 300 })
 

@@ -13,7 +13,15 @@ export const stateFor = (role: Role) => path.join(__dirname, '.auth', `${role}.j
 /** A photograph generated for this run, so the recycled check never sees it twice. */
 export const photoPath = (n: number) => path.join(__dirname, '.tmp', `photo-${n}.jpg`)
 
-export function ids(): { streetConditionTypeId: number; bk04BoardId: number } {
+export function ids(): {
+    streetConditionTypeId: number
+    bk04BoardId: number
+    dotAgencyId: number
+    /** An officer kept for the administrator's journey: deactivated, posted to BK-18, holding no work. */
+    spareOfficerId: number
+    spareFromBoardId: number
+    spareToBoardId: number
+} {
     return JSON.parse(readFileSync(path.join(__dirname, '.tmp', 'ids.json'), 'utf8'))
 }
 
@@ -71,4 +79,20 @@ export async function reportDone(code: string, photo: number, note: string) {
     })
     expect(response.ok(), await response.text()).toBeTruthy()
     return (await response.json()) as { ok: boolean; proof: { outcome: string } }
+}
+
+/** The officer escalates a request they answer for, with a reason. */
+export async function escalateAsOfficer(requestId: number, reason: string) {
+    const officer = await api('officer')
+    const response = await officer.post(`requests/${requestId}/escalate`, { data: { reason } })
+    expect(response.ok(), await response.text()).toBeTruthy()
+}
+
+/** The officer changes a request's status through their own route. */
+export async function setStatusAsOfficer(requestId: number, status: string, note?: string) {
+    const officer = await api('officer')
+    const response = await officer.patch(`officer/requests/${requestId}/status`, {
+        data: { status, ...(note ? { note } : {}) },
+    })
+    expect(response.ok(), await response.text()).toBeTruthy()
 }

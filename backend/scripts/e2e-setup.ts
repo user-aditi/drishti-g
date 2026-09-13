@@ -51,6 +51,37 @@ async function photograph(): Promise<Buffer> {
   return sharp(pixels, { raw: { width: size, height: size, channels: 3 } }).jpeg({ quality: 85 }).toBuffer()
 }
 
+/**
+ * An officer that exists only for the administrator's journey, reset every run.
+ *
+ * Moving or deactivating a seeded officer would hand their imported requests to
+ * someone else in whatever database the tests run against. This one starts every
+ * run deactivated — so the posting rule never gives it work — and posted to BK-18,
+ * and has no password anyone could sign in with. The journey reactivates it,
+ * moves it, and deactivates it again.
+ */
+async function spareOfficer(agencyId: number, orgUnitId: number): Promise<number> {
+  const email = 'e2e.spare.officer@synthetic.drishti.invalid'
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: { isActive: false, agencyId },
+    create: {
+      email,
+      name: 'E2E Spare Officer',
+      // Not a bcrypt hash, so no password matches it.
+      passwordHash: '!e2e-no-password',
+      role: 'OFFICER',
+      agencyId,
+      isSynthetic: true,
+      isActive: false,
+    },
+  })
+  const at = new Date()
+  await prisma.posting.updateMany({ where: { userId: user.id, endedAt: null }, data: { endedAt: at } })
+  await prisma.posting.create({ data: { userId: user.id, agencyId, orgUnitId, startedAt: at } })
+  return user.id
+}
+
 async function main() {
   mkdirSync(AUTH, { recursive: true })
   mkdirSync(TMP, { recursive: true })
@@ -78,11 +109,29 @@ async function main() {
 
   for (let i = 1; i <= PHOTOS; i++) writeFileSync(`${TMP}photo-${i}.jpg`, await photograph())
 
-  const [type, board] = await Promise.all([
+  const [type, board, spareFrom, spareTo, dot] = await Promise.all([
     prisma.requestType.findFirstOrThrow({ where: { name: 'Street Condition' }, select: { id: true } }),
     prisma.orgUnit.findFirstOrThrow({ where: { code: 'BK-04' }, select: { id: true } }),
+    prisma.orgUnit.findFirstOrThrow({ where: { code: 'BK-18' }, select: { id: true } }),
+    prisma.orgUnit.findFirstOrThrow({ where: { code: 'BK-17' }, select: { id: true } }),
+    prisma.agency.findFirstOrThrow({ where: { code: 'DOT' }, select: { id: true } }),
   ])
-  writeFileSync(`${TMP}ids.json`, JSON.stringify({ streetConditionTypeId: type.id, bk04BoardId: board.id }, null, 2))
+  const spare = await spareOfficer(dot.id, spareFrom.id)
+  writeFileSync(
+    `${TMP}ids.json`,
+    JSON.stringify(
+      {
+        streetConditionTypeId: type.id,
+        bk04BoardId: board.id,
+        dotAgencyId: dot.id,
+        spareOfficerId: spare,
+        spareFromBoardId: spareFrom.id,
+        spareToBoardId: spareTo.id,
+      },
+      null,
+      2,
+    ),
+  )
 
   console.log(`e2e setup: ${Object.keys(ACCOUNTS).length} sessions, ${PHOTOS} fresh photographs, ids written`)
 }

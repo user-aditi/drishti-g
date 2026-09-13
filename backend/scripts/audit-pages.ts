@@ -57,6 +57,8 @@ interface Ids {
   officerSr: string
   /** Any work-order code. */
   code: string
+  /** The officer, for the person page. */
+  officerId: number
 }
 
 interface Check {
@@ -82,6 +84,11 @@ function checks(ids: Ids): Check[] {
     page(`/agency/sr/${ids.dotSr}`, 'agent'),
     page('/boards', 'agent'),
     page('/map', 'agent'),
+    // Public since Phase 11: counts over NYC Open Data, for residents too.
+    page('/boards', 'anon'),
+    page('/map', 'anon'),
+    page('/boards', 'supervisor'),
+    page('/map', 'commissioner'),
 
     // --- Layer 1: officer identity ------------------------------------------------
     page('/officer/desk', 'officer'),
@@ -100,6 +107,9 @@ function checks(ids: Ids): Check[] {
     page('/admin/risk', 'admin'),
     page('/admin/routing', 'admin'),
     page('/admin/audit', 'admin'),
+    page('/admin/people', 'admin'),
+    page(`/admin/people/${ids.officerId}`, 'admin'),
+    page('/admin/system', 'admin'),
 
     // --- Layer 4: photo verification --------------------------------------------------
     page('/officer/verify', 'officer'),
@@ -112,6 +122,7 @@ function checks(ids: Ids): Check[] {
     denied('/officer/verify', 'anon'),
     denied('/supervisor/assign', 'anon'),
     denied('/admin/risk', 'anon'),
+    denied('/admin/people', 'anon'),
     // Signed in as the wrong role. The risk register is a model's statement about
     // the people who work at a board, and N13 keeps it from the agencies scored.
     denied('/admin/risk', 'officer'),
@@ -119,6 +130,9 @@ function checks(ids: Ids): Check[] {
     denied('/agency/queue', 'citizen'),
     denied('/officer/verify', 'citizen'),
     denied('/supervisor/escalations', 'officer'),
+    denied('/admin/people', 'supervisor'),
+    denied('/admin/system', 'commissioner'),
+    denied(`/admin/people/${ids.officerId}`, 'officer'),
   ]
 }
 
@@ -143,7 +157,7 @@ async function resolveIds(): Promise<Ids> {
         `(DOT request: ${Boolean(dot)}, officer request: ${Boolean(mine)}, work order: ${Boolean(order)})`,
     )
   }
-  return { dotSr: dot.srNumber, officerSr: mine.srNumber, code: order.code }
+  return { dotSr: dot.srNumber, officerSr: mine.srNumber, code: order.code, officerId: officer.id }
 }
 
 /** A session cookie for an actor, signed with the backend's own key. */

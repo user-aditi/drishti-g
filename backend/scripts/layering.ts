@@ -42,6 +42,9 @@ export const LAYER_FILES: Record<Layer, string[]> = {
     'src/utils/serialize.ts',
     'src/config/systemClock.ts',
     'src/middleware/rateLimit.ts',
+    'src/middleware/auth.ts',
+    'src/lib/jobRuns.ts',
+    'src/services/modelSpec.ts',
   ],
   1: [
     'src/routes/officer.ts',
@@ -57,6 +60,8 @@ export const LAYER_FILES: Record<Layer, string[]> = {
     'src/routes/risk.ts',
     'src/routes/routing.ts',
     'src/routes/admin.ts',
+    'src/routes/adminPeople.ts',
+    'src/routes/adminSystem.ts',
     'src/services/grie.ts',
     'src/services/riskScores.ts',
     'src/services/riskSignals.ts',

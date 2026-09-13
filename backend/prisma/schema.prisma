@@ -440,6 +440,7 @@ model User {
   // Layer 2
   escalationsRaised   Escalation[]     @relation("EscalationBy")
   escalationsReceived Escalation[]     @relation("EscalationTo")
+  escalationsAcknowledged Escalation[] @relation("EscalationAcknowledgedBy")
 
   // Layer 4
   proofsDecided       WorkProof[]      @relation("ProofOfficer")
@@ -660,9 +661,20 @@ model Escalation {
   /// Real time: an escalation is an event in this system.
   at         DateTime
 
-  request  ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  raisedBy User?          @relation("EscalationBy", fields: [raisedById], references: [id], onDelete: Restrict)
-  toUser   User?          @relation("EscalationTo", fields: [toUserId], references: [id], onDelete: Restrict)
+  /// When the senior person at this rung said they had it, and what they said.
+  /// An escalation nobody acknowledges is indistinguishable from one nobody
+  /// read, and that difference is the whole of what the ladder is for.
+  acknowledgedAt   DateTime?
+  acknowledgedById Int?
+  acknowledgeNote  String?
+  /// When the request closed, ending what this rung was raised about. Cleared
+  /// again if the request is reopened.
+  resolvedAt       DateTime?
+
+  request        ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  raisedBy       User?          @relation("EscalationBy", fields: [raisedById], references: [id], onDelete: Restrict)
+  toUser         User?          @relation("EscalationTo", fields: [toUserId], references: [id], onDelete: Restrict)
+  acknowledgedBy User?          @relation("EscalationAcknowledgedBy", fields: [acknowledgedById], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
 

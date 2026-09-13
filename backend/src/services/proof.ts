@@ -18,6 +18,7 @@
  * GRIE's factors, so a crew whose submission is refused can be told exactly
  * which check failed and why.
  */
+import { recordRun, registerJob } from '../lib/jobRuns.js'
 import { ProofOutcome, RequestStatus, type Prisma, type PrismaClient } from '@prisma/client'
 import { env } from '../config/env.js'
 import { distanceMetres } from './exif.js'
@@ -368,11 +369,14 @@ export function startProofSweep(
   log: (message: string) => void,
 ): () => void {
   let running = false
+  registerJob('proof-sweep', intervalMs)
   const tick = async () => {
     if (running) return
     running = true
+    const startedAt = new Date()
     try {
       const result = await sweepSilentCitizens(db)
+      recordRun('proof-sweep', startedAt, { result })
       if (result.considered > 0) {
         log(
           `proof sweep: ${result.considered} submission(s) past the grace period — ` +
@@ -380,6 +384,7 @@ export function startProofSweep(
         )
       }
     } catch (err) {
+      recordRun('proof-sweep', startedAt, { error: err })
       log(`proof sweep failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       running = false

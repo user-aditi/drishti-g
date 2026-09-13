@@ -158,12 +158,15 @@ The server prints the reference date at boot, `/api/v1/health` reports it, and
 | `/my/requests` | Citizen | Their own requests |
 | `/agency/queue` | Agent | The working register |
 | `/agency/sr/[id]` | Agent | Request detail and status actions |
-| `/boards` | Agent | Per community board: volume, median resolution, backlog |
-| `/map` | Agent | Clustered map of open requests |
+| `/boards` | Public | Per community board: volume, median resolution, backlog, filterable by agency |
+| `/map` | Public | Clustered map of open requests, filterable by agency |
 
 Anyone can file a request and anyone can look one up, with no account. NYC 311
 takes most of its reports by telephone from people who have never signed in, and
-a replica that demanded a login first would not be a replica.
+a replica that demanded a login first would not be a replica. The board rollup
+and the map are public for the same reason: they are counts over data New York
+already publishes, and a resident asking how their board is doing is who they
+are for.
 
 There are exactly two roles. A **citizen** files and tracks their own requests.
 An **agent** works their agency's queue, with agency-level accountability and no

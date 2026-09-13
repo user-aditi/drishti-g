@@ -5,7 +5,7 @@ import { referenceDate } from '../config/systemClock.js'
 import { prisma } from '../lib/prisma.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
-import { escalate, LEVEL_NAME, TOP_LEVEL } from '../services/escalation.js'
+import { acknowledge, escalate, holdsRung, LEVEL_NAME, TOP_LEVEL } from '../services/escalation.js'
 import { asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
 import { escalationView, LAYER2_INCLUDE, layer2Request } from '../utils/serializeLayer2.js'
 import type { AuthUser } from '../types/express.js'
@@ -33,6 +33,20 @@ function mayRaise(
   if (user.role === Role.OFFICER) return request.assignedOfficerId === user.id
   if (user.role === Role.SUPERVISOR) return request.agencyId === user.agencyId
   return false
+}
+
+/**
+ * The rungs on this request that this person may acknowledge now: rungs they
+ * hold, on a request still open, that nobody has acknowledged yet.
+ */
+function acknowledgeableBy(
+  user: AuthUser,
+  request: { agencyId: number; status: RequestStatus; escalations: { id: number; toLevel: number; acknowledgedAt: Date | null }[] },
+): number[] {
+  if (request.status === RequestStatus.CLOSED) return []
+  return request.escalations
+    .filter((e) => e.acknowledgedAt === null && holdsRung(user, e, request))
+    .map((e) => e.id)
 }
 
 const listSchema = z.object({
@@ -76,8 +90,12 @@ escalationsRouter.get(
       prisma.serviceRequest.count({ where }),
     ])
     const now = referenceDate()
+    const user = req.user!
     res.json({
-      rows: rows.map((r) => layer2Request(r, now)),
+      rows: rows.map((r) => ({
+        ...layer2Request(r, now),
+        acknowledgeable: acknowledgeableBy(user, r),
+      })),
       total,
       page: q.page,
       pageSize: q.pageSize,
@@ -118,6 +136,7 @@ escalationsRouter.get(
       nextLevelName: request.escalationLevel < TOP_LEVEL ? LEVEL_NAME[request.escalationLevel + 1] : null,
       canEscalate: open && request.escalationLevel < TOP_LEVEL && mayRaise(user, request),
       escalations: request.escalations.map(escalationView),
+      acknowledgeable: acknowledgeableBy(user, request),
     })
   }),
 )
@@ -183,5 +202,51 @@ escalationsRouter.post(
       }
       throw err
     }
+  }),
+)
+
+const acknowledgeSchema = z.object({
+  note: z
+    .string()
+    .trim()
+    .min(5, 'Say what happens next — the officer and anyone above you will read it')
+    .max(1000),
+})
+
+/**
+ * Acknowledge a rung: the senior person it reached says they have it.
+ *
+ * Only whoever holds that rung in the request's agency, only while the request
+ * is open, and only once. A supervisor cannot acknowledge what reached the
+ * commissioner — that would let the rung below close off the rung above.
+ */
+escalationsRouter.post(
+  '/escalations/:id/acknowledge',
+  authenticate,
+  requireRole(...SENIOR),
+  validate(acknowledgeSchema),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id)) throw badRequest('Invalid escalation id')
+    const { note } = req.body as z.infer<typeof acknowledgeSchema>
+    const user = req.user!
+
+    const escalation = await prisma.escalation.findUnique({ where: { id }, include: { request: true } })
+    if (!escalation) throw notFound('No such escalation')
+    if (!holdsRung(user, escalation, escalation.request)) {
+      throw forbidden(`Only the ${LEVEL_NAME[escalation.toLevel]} in this request’s agency can acknowledge this`)
+    }
+    if (escalation.request.status === RequestStatus.CLOSED) throw badRequest('That request is closed')
+
+    const done = await prisma.$transaction((tx) =>
+      acknowledge(tx, { escalationId: id, userId: user.id, userLabel: user.name, note, at: new Date() }),
+    )
+    if (!done) throw badRequest('Someone has already acknowledged this')
+
+    const updated = await prisma.serviceRequest.findUniqueOrThrow({
+      where: { id: escalation.requestId },
+      include: LAYER2_INCLUDE,
+    })
+    res.json({ ...layer2Request(updated, referenceDate()), acknowledgeable: acknowledgeableBy(user, updated) })
   }),
 )

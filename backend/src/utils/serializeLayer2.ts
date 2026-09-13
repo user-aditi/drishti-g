@@ -16,6 +16,7 @@ export const LAYER2_INCLUDE = {
     include: {
       raisedBy: { select: { name: true, isSynthetic: true } },
       toUser: { select: { name: true, isSynthetic: true } },
+      acknowledgedBy: { select: { name: true, isSynthetic: true } },
     },
   },
 } satisfies Prisma.ServiceRequestInclude
@@ -33,6 +34,10 @@ export function escalationView(escalation: Layer2Request['escalations'][number])
     at: escalation.at,
     raisedBy: escalation.raisedBy,
     toUser: escalation.toUser,
+    acknowledgedAt: escalation.acknowledgedAt,
+    acknowledgedBy: escalation.acknowledgedBy,
+    acknowledgeNote: escalation.acknowledgeNote,
+    resolvedAt: escalation.resolvedAt,
   }
 }
 

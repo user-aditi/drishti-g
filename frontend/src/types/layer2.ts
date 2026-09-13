@@ -23,6 +23,12 @@ export interface EscalationView {
     raisedBy: Person | null
     /** Null only if nobody holds that rung in the agency. */
     toUser: Person | null
+    /** When whoever holds the rung said they had it, and what they said. */
+    acknowledgedAt: string | null
+    acknowledgedBy: Person | null
+    acknowledgeNote: string | null
+    /** When the request closed. Cleared if it is reopened. */
+    resolvedAt: string | null
 }
 
 export interface EscalatedRequest extends Layer1Request {
@@ -32,7 +38,8 @@ export interface EscalatedRequest extends Layer1Request {
 }
 
 export interface EscalationsPage {
-    rows: EscalatedRequest[]
+    /** Each row carries the rungs the viewer may acknowledge now. */
+    rows: (EscalatedRequest & { acknowledgeable: number[] })[]
     total: number
     page: number
     pageSize: number
@@ -48,4 +55,6 @@ export interface RequestEscalations {
     nextLevelName: string | null
     canEscalate: boolean
     escalations: EscalationView[]
+    /** Rungs on this request the viewer may acknowledge now. */
+    acknowledgeable: number[]
 }

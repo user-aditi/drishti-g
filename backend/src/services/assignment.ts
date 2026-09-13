@@ -170,3 +170,59 @@ export async function assignOnFiling(
     source: AssignmentSource.POSTING_RULE,
   })
 }
+
+/**
+ * Hand on the open work of an officer who can no longer hold it — moved to
+ * another board, or deactivated. Call after the posting or account has changed.
+ *
+ * Layer 1's gate is that every open request has exactly one accountable,
+ * currently-posted officer. Moving an officer without this would leave their
+ * requests answered for by someone posted elsewhere, or by nobody who can sign
+ * in. Each request is kept if the officer is still eligible for it, otherwise
+ * given to whoever the posting rule picks now, otherwise left unassigned — where
+ * the supervisor's unassigned queue shows it, rather than hidden under a name.
+ */
+export async function reassignAwayFrom(
+  tx: Prisma.TransactionClient,
+  officerId: number,
+  by: { userId: number; label: string },
+): Promise<{ kept: number; reassigned: number; unassigned: number }> {
+  const open = await tx.serviceRequest.findMany({
+    where: { assignedOfficerId: officerId, status: { not: RequestStatus.CLOSED } },
+    select: { id: true, agencyId: true, orgUnitId: true },
+  })
+
+  const tally = { kept: 0, reassigned: 0, unassigned: 0 }
+  for (const request of open) {
+    if (await isEligible(tx, officerId, request)) {
+      tally.kept++
+      continue
+    }
+    const next = await officerFor(tx, request.agencyId, request.orgUnitId)
+    if (next !== null) {
+      await assign(tx, {
+        requestId: request.id,
+        officerId: next,
+        byUserId: by.userId,
+        byLabel: `posting rule, after ${by.label} moved the previous officer`,
+        source: AssignmentSource.POSTING_RULE,
+      })
+      tally.reassigned++
+    } else {
+      await tx.serviceRequest.update({
+        where: { id: request.id },
+        data: { assignedOfficerId: null, assignedAt: null },
+      })
+      await audit.record(tx, {
+        action: 'request.unassigned',
+        entityType: 'request',
+        entityId: request.id,
+        payload: { previousOfficerId: officerId, reason: 'no officer posted to take it' },
+        actorId: by.userId,
+        actorLabel: by.label,
+      })
+      tally.unassigned++
+    }
+  }
+  return tally
+}

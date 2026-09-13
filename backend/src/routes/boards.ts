@@ -1,7 +1,8 @@
 import { Router } from 'express'
 import { referenceDate } from '../config/systemClock.js'
 import { prisma } from '../lib/prisma.js'
-import { asyncHandler } from '../utils/http.js'
+import { z } from 'zod'
+import { asyncHandler, badRequest } from '../utils/http.js'
 
 export const boardsRouter: Router = Router()
 
@@ -57,7 +58,7 @@ const SORT_MEMORY = '64MB'
  *
  * **Overdue is counted against the system reference date**, never `Date.now()`.
  */
-async function compute(now: Date): Promise<BoardFigures[]> {
+async function compute(now: Date, agencyId: number | null): Promise<BoardFigures[]> {
   const [, rows] = await prisma.$transaction([
     prisma.$executeRawUnsafe(`SET LOCAL work_mem = '${SORT_MEMORY}'`),
     prisma.$queryRaw<BoardRow[]>`
@@ -77,6 +78,7 @@ async function compute(now: Date): Promise<BoardFigures[]> {
                )                                                AS median_hours
         FROM service_requests r
         WHERE r."orgUnitId" IS NOT NULL
+          AND (${agencyId}::int IS NULL OR r."agencyId" = ${agencyId}::int)
         GROUP BY r."orgUnitId"
       )
       SELECT u.id,
@@ -141,26 +143,28 @@ async function compute(now: Date): Promise<BoardFigures[]> {
 
 const TTL_MS = 60_000
 
-let cached: { key: string; at: number; body: BoardFigures[] } | null = null
-let inflight: { key: string; generation: number; promise: Promise<BoardFigures[]> } | null = null
+// One entry per agency filter, plus the unfiltered borough. Four at most.
+const cached = new Map<string, { at: number; body: BoardFigures[] }>()
+const inflight = new Map<string, { generation: number; promise: Promise<BoardFigures[]> }>()
 let generation = 0
 
-function load(now: Date): Promise<BoardFigures[]> {
-  const key = now.toISOString()
-  if (inflight && inflight.key === key && inflight.generation === generation) {
-    return inflight.promise
-  }
+const keyFor = (now: Date, agencyId: number | null) => `${now.toISOString()}|${agencyId ?? 'all'}`
+
+function load(now: Date, agencyId: number | null = null): Promise<BoardFigures[]> {
+  const key = keyFor(now, agencyId)
+  const running = inflight.get(key)
+  if (running && running.generation === generation) return running.promise
 
   const startedAt = generation
-  const promise = compute(now).then((body) => {
-    if (startedAt === generation) cached = { key, at: Date.now(), body }
+  const promise = compute(now, agencyId).then((body) => {
+    if (startedAt === generation) cached.set(key, { at: Date.now(), body })
     return body
   })
-  const entry = { key, generation: startedAt, promise }
-  inflight = entry
+  const entry = { generation: startedAt, promise }
+  inflight.set(key, entry)
   promise
     .finally(() => {
-      if (inflight === entry) inflight = null
+      if (inflight.get(key) === entry) inflight.delete(key)
     })
     .catch(() => {
       // The reader awaiting `promise` sees the error; this branch only stops an
@@ -172,7 +176,7 @@ function load(now: Date): Promise<BoardFigures[]> {
 /** Called after any write that can change a board's figures. */
 export function invalidateBoards(): void {
   generation++
-  cached = null
+  cached.clear()
 }
 
 /** Compute in the background so the next reader does not have to wait. */
@@ -183,15 +187,32 @@ export function warmBoards(): void {
   })
 }
 
+const querySchema = z.object({
+  /** One agency's work only. Omitted: every agency's. */
+  agencyId: z.coerce.number().int().positive().optional(),
+})
+
+/**
+ * Public, deliberately (decided in Phase 11).
+ *
+ * These are counts over NYC Open Data, which New York itself publishes to
+ * anyone, and over requests whose status anyone may already look up by number.
+ * Nothing here names a person or an address. A resident asking how their board
+ * compares is exactly who a rollup like this is for, so the page is public too,
+ * and staff see it with their own agency picked.
+ */
 boardsRouter.get(
   '/',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    const parsed = querySchema.safeParse(req.query)
+    if (!parsed.success) throw badRequest('Invalid filters', parsed.error.flatten())
+    const agencyId = parsed.data.agencyId ?? null
     const now = referenceDate()
     // Keyed on the reference date as well, so a system asked to stand
     // somewhere else in time never answers with figures counted from the old
     // vantage point.
-    const fresh =
-      cached !== null && cached.key === now.toISOString() && Date.now() - cached.at < TTL_MS
-    res.json(fresh ? cached!.body : await load(now))
+    const hit = cached.get(keyFor(now, agencyId))
+    const fresh = hit !== undefined && Date.now() - hit.at < TTL_MS
+    res.json(fresh ? hit.body : await load(now, agencyId))
   }),
 )

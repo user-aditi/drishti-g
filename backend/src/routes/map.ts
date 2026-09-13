@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { RequestStatus } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
-import { authenticate, requireAgent } from '../middleware/auth.js'
+
 import { asyncHandler, badRequest } from '../utils/http.js'
 
 export const mapRouter: Router = Router()
@@ -47,10 +47,14 @@ function gridSize(zoom: number): number {
   return 360 / 2 ** (zoom + 2)
 }
 
+/**
+ * Public, like the board rollup (Phase 11): counts per cell, never a request,
+ * over locations NYC Open Data already publishes with every row. The agency is a
+ * filter the caller chooses, not a scope inferred from who is asking, so the same
+ * query gives everyone the same answer.
+ */
 mapRouter.get(
   '/clusters',
-  authenticate,
-  requireAgent,
   asyncHandler(async (req, res) => {
     const parsed = clusterSchema.safeParse(req.query)
     if (!parsed.success) throw badRequest('Invalid map query', parsed.error.flatten())
@@ -65,7 +69,7 @@ mapRouter.get(
     if (west >= east || south >= north) throw badRequest('bbox must be west,south,east,north')
 
     const size = gridSize(zoom)
-    const agencyFilter = agencyId ?? req.user!.agencyId
+    const agencyFilter = agencyId ?? null
 
     const rows = await prisma.$queryRaw<
       { lat: number; lng: number; count: bigint }[]

@@ -126,7 +126,7 @@ export const apiClient = {
      * the server, where it can run against an index.
      */
     clusters: (
-        params: { bbox: string; zoom: number; openOnly?: boolean; typeId?: number },
+        params: { bbox: string; zoom: number; openOnly?: boolean; typeId?: number; agencyId?: number },
         signal?: AbortSignal,
     ) => request<MapCluster[]>(`/map/clusters${toQuery({ ...params })}`, { signal }),
 

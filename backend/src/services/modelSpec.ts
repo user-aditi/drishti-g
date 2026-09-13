@@ -109,3 +109,30 @@ export function specStatus(specs: { name: string; file: string; contract: string
     return spec ? `${name}: ${spec.modelVersion}` : `${name}: NOT LOADED — running without it`
   })
 }
+
+export interface DeclaredSpec {
+  name: string
+  file: string
+  contract: string
+}
+
+const declared = new Map<string, DeclaredSpec>()
+
+/**
+ * Name a spec this build executes, so the system page can report it.
+ *
+ * Declared where the layers are composed rather than discovered here, because
+ * this file is shared by every layer and must not know which models exist above
+ * it (N5).
+ */
+export function declareSpec(spec: DeclaredSpec): void {
+  declared.set(spec.file, spec)
+}
+
+/** Every declared spec, with the version loaded, or null when it is not. */
+export function declaredSpecs() {
+  return [...declared.values()].map((spec) => {
+    const loaded = loadSpec<SpecEnvelope>(spec.file, spec.contract)
+    return { ...spec, loaded: loaded !== null, modelVersion: loaded?.modelVersion ?? null }
+  })
+}

@@ -17,7 +17,8 @@ import {
 import { EMPTY, formatCount, formatHours } from '@/lib/format'
 import { getBoards, getHealth } from '@/lib/api'
 import { messageFrom } from '@/lib/api-error'
-import { requireUser } from '@/lib/auth'
+import { auth } from '@/lib/auth'
+import { AgencyFilter, agencyChoice } from '@/components/shared/agency-filter'
 import type { Board } from '@/types'
 
 export const metadata: Metadata = { title: 'Community boards' }
@@ -35,15 +36,23 @@ export const dynamic = 'force-dynamic'
  * of 139 hours and a 90th percentile of 1,881 — so a mean would report a number
  * no request in that board ever experienced, and would lurch every time one
  * streetlight sat open for two years.
+ *
+ * Public since Phase 11, like the API behind it: these are counts over NYC Open
+ * Data, and a resident asking how their board compares is who they are for.
  */
-export default async function BoardsPage() {
-    await requireUser('AGENT')
+export default async function BoardsPage({
+    searchParams,
+}: {
+    searchParams: Record<string, string | string[] | undefined>
+}) {
+    const user = await auth()
+    const { agencies, selected } = await agencyChoice(searchParams, user)
 
     let boards: Board[] = []
     let error: string | null = null
 
     try {
-        boards = await getBoards()
+        boards = await getBoards(selected?.id)
     } catch (err) {
         error = messageFrom(err, 'The community boards could not be loaded.')
     }
@@ -71,6 +80,8 @@ export default async function BoardsPage() {
                 description="Brooklyn's eighteen community boards, with the volume, backlog and typical closing time behind each. Boards are the smallest area 311 attributes a request to."
             />
 
+            <AgencyFilter path="/boards" agencies={agencies} selected={selected} />
+
             {error ? (
                 <ErrorNotice title="Could not load the boards" message={error} />
             ) : (
@@ -78,7 +89,9 @@ export default async function BoardsPage() {
                     <ReferenceDate referenceDate={referenceDate} />
 
                     <RegisterFrame>
-                        <RegisterTable caption="Service requests by Brooklyn community board">
+                        <RegisterTable
+                            caption={`Service requests by Brooklyn community board, ${selected ? selected.name : 'every agency'}`}
+                        >
                             <RegisterHead>
                                 <Th>Board</Th>
                                 <Th align="right">Requests</Th>
@@ -95,13 +108,19 @@ export default async function BoardsPage() {
                                     boards.map((board) => (
                                         <Tr key={board.id}>
                                             <Td>
-                                                <Link
-                                                    href={`/agency/queue?orgUnitId=${board.id}`}
-                                                    className="text-brand underline underline-offset-2"
-                                                >
-                                                    <span className="mono">{board.code}</span>{' '}
-                                                    {board.name}
-                                                </Link>
+                                                {/* The queue is the agent's; everyone else reads the row. */}
+                                                {user?.role === 'AGENT' ? (
+                                                    <Link
+                                                        href={`/agency/queue?orgUnitId=${board.id}`}
+                                                        className="text-brand underline underline-offset-2"
+                                                    >
+                                                        <span className="mono">{board.code}</span> {board.name}
+                                                    </Link>
+                                                ) : (
+                                                    <>
+                                                        <span className="mono">{board.code}</span> {board.name}
+                                                    </>
+                                                )}
                                             </Td>
                                             <Td align="right" mono>
                                                 {formatCount(board.total)}

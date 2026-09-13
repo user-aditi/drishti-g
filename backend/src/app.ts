@@ -19,9 +19,15 @@ import { escalationsRouter } from './routes/escalations.js'
 import { proofRouter } from './routes/proof.js'
 import { adminRouter } from './routes/admin.js'
 import { riskRouter } from './routes/risk.js'
-import { routingRouter } from './routes/routing.js'
+import { GCCE_CONTRACT, routingRouter } from './routes/routing.js'
+import { adminPeopleRouter } from './routes/adminPeople.js'
+import { adminSystemRouter } from './routes/adminSystem.js'
+import { GRIE_CONTRACT, GRIE_SPEC_FILE } from './services/grie.js'
+import { declareSpec } from './services/modelSpec.js'
+import { PROOF_CONTRACT } from './services/proof.js'
 import { assignOnFiling } from './services/assignment.js'
 import { withdrawWorkOnClose } from './services/workOrder.js'
+import { resolveEscalationsOnClose } from './services/escalation.js'
 import { onFiled, onStatusChanged } from './services/requestHooks.js'
 
 /**
@@ -59,6 +65,7 @@ export function createApp(): Express {
   // multipart form that carries photographs. Anything else falls straight
   // through. Remove this line and Layer 1 behaves exactly as it did before
   // Layer 4 existed — which is the property N5 is about.
+  declareSpec({ name: 'Photo verification (recycled-photograph threshold)', file: 'proof-spec.json', contract: PROOF_CONTRACT })
   app.use(api, proofRouter)
 
   // ---- Layer 1: officer identity. Ours, not NYC's. -------------------------
@@ -74,6 +81,9 @@ export function createApp(): Express {
   // ---- Layer 2: escalation. Ours, not NYC's. --------------------------------
   // The sweep that climbs the ladder is started in index.ts: a timer belongs to
   // the running process, not to an app that every test file composes afresh.
+  // A request that closes resolves its escalations, so the register can say how
+  // long the senior person had it.
+  onStatusChanged('layer2:resolve-escalations-on-close', resolveEscalationsOnClose)
   app.use(api, escalationsRouter)
 
   // ---- Layer 3: GRIE, and GCCE's routing report. Ours, not NYC's. ---------
@@ -82,6 +92,12 @@ export function createApp(): Express {
   app.use(`${api}/risk`, riskRouter)
   app.use(`${api}/routing`, routingRouter)
   app.use(`${api}/admin`, adminRouter)
+  // The administrator's people and system pages, which report on every layer
+  // above and so are composed here, with each layer declaring its own model.
+  declareSpec({ name: 'GRIE (risk)', file: GRIE_SPEC_FILE, contract: GRIE_CONTRACT })
+  declareSpec({ name: 'GCCE (routing report)', file: 'gcce-spec.json', contract: GCCE_CONTRACT })
+  app.use(`${api}/admin`, adminPeopleRouter)
+  app.use(`${api}/admin`, adminSystemRouter)
 
   app.get('/', (_req, res) => {
     res.json({

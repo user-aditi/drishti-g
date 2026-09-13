@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { Panel, PanelBody, PanelHeader, PanelTitle } from '@/components/ui/card'
 import { formatDateTime } from '@/lib/format'
 import type { RequestEscalations } from '@/types/layer2'
+import { AcknowledgeControl } from './acknowledge-control'
 import { EscalateControl } from './escalate-control'
 
 /**
@@ -62,6 +63,23 @@ export function EscalationPanel({ data }: { data: RequestEscalations }) {
                                         )}
                                     </span>
                                     <span className="mono text-sm text-ink-soft">{formatDateTime(rung.at)}</span>
+                                    {rung.acknowledgedAt ? (
+                                        <span className="text-sm text-ink-mid">
+                                            Acknowledged by {rung.acknowledgedBy?.name ?? 'someone'},{' '}
+                                            {formatDateTime(rung.acknowledgedAt)}: &ldquo;{rung.acknowledgeNote}&rdquo;
+                                        </span>
+                                    ) : data.acknowledgeable.includes(rung.id) ? (
+                                        <div className="pt-1">
+                                            <AcknowledgeControl escalationId={rung.id} srNumber={data.srNumber} />
+                                        </div>
+                                    ) : (
+                                        !rung.resolvedAt && <span className="text-sm text-wait">Not yet acknowledged</span>
+                                    )}
+                                    {rung.resolvedAt && (
+                                        <span className="text-sm text-done">
+                                            Resolved when the request closed, {formatDateTime(rung.resolvedAt)}
+                                        </span>
+                                    )}
                                 </li>
                             ))}
                         </ol>

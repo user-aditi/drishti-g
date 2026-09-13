@@ -26,7 +26,13 @@ const REFERENCE = '2025-12-31T23:11:00.000Z'
 async function reset() {
   await prisma.requestStatusHistory.deleteMany()
   await prisma.auditEvent.deleteMany()
+  // Rows other files leave behind that reference users, agencies and units with
+  // `Restrict`. Which file ran before this one is not this file's business.
+  await prisma.workOrder.deleteMany()
+  await prisma.assignment.deleteMany()
+  await prisma.riskScore.deleteMany()
   await prisma.serviceRequest.deleteMany()
+  await prisma.posting.deleteMany()
   await prisma.requestDescriptor.deleteMany()
   await prisma.user.deleteMany()
   await prisma.requestType.deleteMany()

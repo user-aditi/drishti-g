@@ -97,7 +97,7 @@ function Viewport({ onChange }: { onChange: (bbox: string, zoom: number) => void
     return null
 }
 
-export function ClusterMap({ agencyLabel }: { agencyLabel: string | null }) {
+export function ClusterMap({ agencyId, agencyLabel }: { agencyId: number | null; agencyLabel: string | null }) {
     const [clusters, setClusters] = useState<MapCluster[]>([])
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
@@ -113,7 +113,7 @@ export function ClusterMap({ agencyLabel }: { agencyLabel: string | null }) {
         setLoading(true)
 
         apiClient
-            .clusters({ bbox, zoom, openOnly: true }, controller.signal)
+            .clusters({ bbox, zoom, openOnly: true, ...(agencyId ? { agencyId } : {}) }, controller.signal)
             .then((rows) => {
                 setClusters(rows)
                 setError(null)
@@ -128,7 +128,7 @@ export function ClusterMap({ agencyLabel }: { agencyLabel: string | null }) {
                 // flight and the panel should keep saying so.
                 if (inFlight.current === controller) setLoading(false)
             })
-    }, [])
+    }, [agencyId])
 
     useEffect(() => () => inFlight.current?.abort(), [])
 

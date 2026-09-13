@@ -9,7 +9,9 @@ import type { User } from '@/types'
  *
  * A visitor needs two things — file something, or check something they already
  * filed — and the header is those two things. Someone signed in gets their own
- * register added to that list, and an agent gets the three working screens.
+ * register added to that list, and staff get their working screens. The board
+ * rollup and the map close every list, because since Phase 11 they are public:
+ * how the borough is doing is everyone's question.
  * Nobody gets a menu of everything: the navigation says what you can do here,
  * not what the software contains.
  *
@@ -50,9 +52,16 @@ const ADMIN_LINKS: NavLink[] = [
     { href: '/admin/audit', label: 'Audit' },
 ]
 
-const AGENT_LINKS: NavLink[] = [
-    { href: '/agency/queue', label: 'Queue' },
-    { href: '/boards', label: 'Community boards' },
+const AGENT_LINKS: NavLink[] = [{ href: '/agency/queue', label: 'Queue' }]
+
+/** Admin's Layer 3 additions to its console. */
+const ADMIN_OPERATIONS_LINKS: NavLink[] = [
+    { href: '/admin/people', label: 'People' },
+    { href: '/admin/system', label: 'System' },
+]
+
+const AREA_LINKS: NavLink[] = [
+    { href: '/boards', label: 'Boards' },
     { href: '/map', label: 'Map' },
 ]
 
@@ -71,7 +80,8 @@ export function SiteHeader({
         ...(user?.role === 'OFFICER' ? OFFICER_LINKS : []),
         ...(user?.role === 'SUPERVISOR' ? SUPERVISOR_LINKS : []),
         ...(user?.role === 'COMMISSIONER' ? COMMISSIONER_LINKS : []),
-        ...(user?.role === 'ADMIN' ? ADMIN_LINKS : []),
+        ...(user?.role === 'ADMIN' ? [...ADMIN_LINKS, ...ADMIN_OPERATIONS_LINKS] : []),
+        ...AREA_LINKS,
     ]
 
     return (

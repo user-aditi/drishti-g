@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
-import { api, fileRequest, issueWorkOrder, pageAs, type Role } from './support'
+import { api, fileRequest, ids, issueWorkOrder, pageAs, type Role } from './support'
 
 /**
  * Every page, audited for accessibility as the person it is for.
@@ -23,7 +23,7 @@ test.beforeAll(async () => {
     code = (await issueWorkOrder(filed.id)).code
 })
 
-const PAGES: { path: () => string; role: Role | 'anon' }[] = [
+const PAGES: { path: () => string; role: Role | 'anon'; label?: string }[] = [
     { path: () => '/', role: 'anon' },
     { path: () => '/file', role: 'anon' },
     { path: () => '/login', role: 'anon' },
@@ -36,6 +36,8 @@ const PAGES: { path: () => string; role: Role | 'anon' }[] = [
     { path: () => `/agency/sr/${srNumber}`, role: 'agent' },
     { path: () => '/boards', role: 'agent' },
     { path: () => '/map', role: 'agent' },
+    { path: () => '/boards', role: 'anon' },
+    { path: () => '/map', role: 'anon' },
     { path: () => '/officer/desk', role: 'officer' },
     { path: () => `/officer/sr/${srNumber}`, role: 'officer' },
     { path: () => '/officer/verify', role: 'officer' },
@@ -44,10 +46,15 @@ const PAGES: { path: () => string; role: Role | 'anon' }[] = [
     { path: () => '/admin/risk', role: 'admin' },
     { path: () => '/admin/routing', role: 'admin' },
     { path: () => '/admin/audit', role: 'admin' },
+    { path: () => '/admin/people', role: 'admin' },
+    { path: () => `/admin/people/${ids().spareOfficerId}`, role: 'admin', label: '/admin/people/[id]' },
+    { path: () => '/admin/system', role: 'admin' },
+    { path: () => '/supervisor/escalations', role: 'commissioner' },
 ]
 
 for (const entry of PAGES) {
-    const label = entry.path().replace(/\/(DG|NYC)-[\w-]+|\/[A-Z0-9]{4}-[A-Z0-9]{4}$/, '/[id]')
+    // Labels are made when the file is collected, before the setup has written ids.
+    const label = entry.label ?? entry.path().replace(/\/(DG|NYC)-[\w-]+|\/[A-Z0-9]{4}-[A-Z0-9]{4}$/, '/[id]')
     test(`${label} as ${entry.role}: no serious accessibility violations`, async ({ browser }) => {
         const page = await pageAs(browser, entry.role)
         await page.goto(entry.path())
