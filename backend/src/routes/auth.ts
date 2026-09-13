@@ -1,14 +1,22 @@
 import { Router } from 'express'
 import { Role } from '@prisma/client'
 import { z } from 'zod'
-import { REFRESH_COOKIE, hashPassword, signToken, verifyPassword, verifyToken } from '../lib/auth.js'
+import {
+  REFRESH_COOKIE,
+  hashPassword,
+  issuedBeforePasswordChange,
+  signToken,
+  verifyPassword,
+  verifyToken,
+  type TokenPayload,
+} from '../lib/auth.js'
 import { clearAuthCookies, setAuthCookies } from '../lib/cookies.js'
 import { prisma } from '../lib/prisma.js'
 import { authenticate } from '../middleware/auth.js'
 import { rateLimit } from '../middleware/rateLimit.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
-import { asyncHandler, conflict, unauthorized } from '../utils/http.js'
+import { asyncHandler, badRequest, conflict, unauthorized } from '../utils/http.js'
 import { publicUser } from '../utils/serialize.js'
 
 export const authRouter: Router = Router()
@@ -137,15 +145,15 @@ authRouter.post(
     const refreshToken = body.refreshToken ?? cookies?.[REFRESH_COOKIE]
     if (!refreshToken) throw unauthorized('Your session has expired — please sign in again')
 
-    let userId: number
+    let payload: TokenPayload
     try {
-      userId = Number(verifyToken(refreshToken, 'refresh').sub)
+      payload = verifyToken(refreshToken, 'refresh')
     } catch {
       throw unauthorized('Your session has expired — please sign in again')
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId } })
-    if (!user || !user.isActive) {
+    const user = await prisma.user.findUnique({ where: { id: Number(payload.sub) } })
+    if (!user || !user.isActive || issuedBeforePasswordChange(payload, user.passwordChangedAt)) {
       throw unauthorized('Your session has expired — please sign in again')
     }
 
@@ -170,5 +178,108 @@ authRouter.get(
       include: USER_INCLUDE,
     })
     res.json(publicUser(user))
+  }),
+)
+
+const profileSchema = z.object({
+  name: z.string().trim().min(2, 'Enter your name').max(128),
+  phone: z.string().trim().max(20).nullable().optional(),
+  /** A resident's home board, used to pre-fill filing. */
+  orgUnitId: z.number().int().positive().nullable().optional(),
+})
+
+/**
+ * Change your own name, phone and home board.
+ *
+ * Not email, which is the sign-in identity, and not role or agency, which are
+ * never a person's to set for themselves.
+ */
+authRouter.patch(
+  '/me',
+  authenticate,
+  validate(profileSchema),
+  asyncHandler(async (req, res) => {
+    const body = req.body as z.infer<typeof profileSchema>
+    if (body.orgUnitId != null) {
+      const unit = await prisma.orgUnit.findUnique({ where: { id: body.orgUnitId } })
+      if (!unit || !unit.isActive) throw badRequest('That community board does not exist')
+    }
+    const user = await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: req.user!.id },
+        data: {
+          name: body.name,
+          ...(body.phone !== undefined ? { phone: body.phone || null } : {}),
+          ...(body.orgUnitId !== undefined ? { orgUnitId: body.orgUnitId } : {}),
+        },
+      })
+      await audit.record(tx, {
+        action: 'user.profile_updated',
+        entityType: 'user',
+        entityId: req.user!.id,
+        // What changed, not the values: a phone number does not belong on a
+        // permanent, hash-chained record.
+        payload: { fields: Object.keys(body) },
+        actorId: req.user!.id,
+        actorLabel: body.name,
+      })
+      return tx.user.findUniqueOrThrow({ where: { id: req.user!.id }, include: USER_INCLUDE })
+    })
+    res.json(publicUser(user))
+  }),
+)
+
+const passwordSchema = z.object({
+  currentPassword: z.string().min(1, 'Enter your current password'),
+  newPassword: z.string().min(8, 'The new password must be at least 8 characters'),
+})
+
+/**
+ * Change your password, and sign every other session out.
+ *
+ * The current password is required even with a valid session: a session left
+ * open on a shared computer should not be enough to take the account over. The
+ * session that made the change gets fresh tokens, issued after the change, so it
+ * stays signed in while every older one is refused.
+ */
+authRouter.post(
+  '/password',
+  rateLimit({
+    bucket: 'password',
+    windowMs: 60_000,
+    max: 5,
+    message: 'Too many password attempts from here. Wait a minute and try again.',
+  }),
+  authenticate,
+  validate(passwordSchema),
+  asyncHandler(async (req, res) => {
+    const body = req.body as z.infer<typeof passwordSchema>
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user!.id } })
+    if (!(await verifyPassword(body.currentPassword, user.passwordHash))) {
+      throw unauthorized('Your current password is not correct')
+    }
+    if (body.currentPassword === body.newPassword) {
+      throw badRequest('Choose a password different from the current one')
+    }
+
+    // Whole seconds, matching a token's `iat`, so the fresh tokens below are not
+    // themselves refused as older than the change.
+    const changedAt = new Date(Math.floor(Date.now() / 1000) * 1000)
+    const passwordHash = await hashPassword(body.newPassword)
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash, passwordChangedAt: changedAt } })
+      await audit.record(tx, {
+        action: 'user.password_changed',
+        entityType: 'user',
+        entityId: user.id,
+        payload: {},
+        actorId: user.id,
+        actorLabel: user.name,
+      })
+    })
+
+    const tokens = tokensFor(user)
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken)
+    res.json({ ok: true, ...tokens })
   }),
 )

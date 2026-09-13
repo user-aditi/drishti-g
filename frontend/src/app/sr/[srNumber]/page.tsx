@@ -6,10 +6,10 @@ import { RequestDetail } from '@/components/request/request-detail'
 import { CitizenProofPanel } from '@/components/layer4/citizen-panel'
 import { ErrorNotice, EmptyNotice } from '@/components/shared/notices'
 import { Button } from '@/components/ui/button'
-import { getHealth, getRequestBySrNumber } from '@/lib/api'
+import { getHealth, getProgress, getRequestBySrNumber } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import { normaliseSrNumber } from '@/lib/format'
-import type { RequestDetail as RequestDetailShape } from '@/types'
+import type { RequestDetail as RequestDetailShape, RequestProgress as Progress } from '@/types'
 
 export function generateMetadata({ params }: { params: { srNumber: string } }): Metadata {
     return { title: `Request ${normaliseSrNumber(params.srNumber)}` }
@@ -46,6 +46,16 @@ export default async function RequestStatusPage({ params }: { params: { srNumber
     // Read against the same clock the API used to compute `isOverdue`. If the
     // health check is unavailable the page still renders — it falls back to the
     // request's own deadline, which is the one figure that does not move.
+    // What has happened, step by step. A failure costs the timeline, not the record.
+    let progress: Progress | null = null
+    if (request) {
+        try {
+            progress = await getProgress(srNumber)
+        } catch {
+            progress = null
+        }
+    }
+
     let referenceDate = request?.slaDueAt ?? request?.createdAt ?? new Date().toISOString()
     try {
         referenceDate = (await getHealth()).referenceDate
@@ -64,7 +74,9 @@ export default async function RequestStatusPage({ params }: { params: { srNumber
                 </Button>
             </div>
 
-            {request && <RequestDetail request={request} referenceDate={referenceDate} />}
+            {request && (
+                <RequestDetail request={request} referenceDate={referenceDate} progress={progress?.steps} />
+            )}
 
             {/* Layer 4, and only for the person who reported this one. */}
             {request && <CitizenProofPanel srNumber={srNumber} />}

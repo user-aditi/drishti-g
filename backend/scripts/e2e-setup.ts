@@ -16,11 +16,12 @@
  * And the ids the tests file against, read from the database rather than
  * hardcoded, so a re-seed cannot leave the tests pointing at nothing.
  */
-import { randomInt } from 'node:crypto'
+import { randomBytes, randomInt } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import type { Role } from '@prisma/client'
 import sharp from 'sharp'
-import { ACCESS_COOKIE, signToken } from '../src/lib/auth.js'
+import { ACCESS_COOKIE, hashPassword, signToken } from '../src/lib/auth.js'
 import { prisma } from '../src/lib/prisma.js'
 
 const AUTH = fileURLToPath(new URL('../../frontend/e2e/.auth/', import.meta.url))
@@ -35,6 +36,25 @@ const ACCOUNTS = {
   commissioner: 'dot.commissioner@synthetic.drishti.invalid',
   admin: 'admin@synthetic.drishti.invalid',
 } as const
+
+/** Playwright storage state holding a session cookie for one account. */
+function storageFor(userId: number, role: Role) {
+  return {
+    cookies: [
+      {
+        name: ACCESS_COOKIE,
+        value: signToken(userId, 'access', role),
+        domain: 'localhost',
+        path: '/',
+        expires: Math.floor(Date.now() / 1000) + 3600,
+        httpOnly: true,
+        secure: false,
+        sameSite: 'Lax' as const,
+      },
+    ],
+    origins: [],
+  }
+}
 
 async function photograph(): Promise<Buffer> {
   const size = 320
@@ -82,6 +102,23 @@ async function spareOfficer(agencyId: number, orgUnitId: number): Promise<number
   return user.id
 }
 
+/**
+ * A resident kept for the account journey, which changes a password — something
+ * no test may do to a seeded account someone signs in with. Reset every run to
+ * a fresh random password.
+ */
+async function accountResident(): Promise<{ id: number; password: string }> {
+  const email = 'e2e.account.resident@synthetic.drishti.invalid'
+  const password = randomBytes(12).toString('base64url')
+  const passwordHash = await hashPassword(password)
+  const user = await prisma.user.upsert({
+    where: { email },
+    update: { passwordHash, passwordChangedAt: null, name: 'E2E Account Resident', isActive: true },
+    create: { email, passwordHash, name: 'E2E Account Resident', role: 'CITIZEN', isSynthetic: true },
+  })
+  return { id: user.id, password }
+}
+
 async function main() {
   mkdirSync(AUTH, { recursive: true })
   mkdirSync(TMP, { recursive: true })
@@ -89,22 +126,7 @@ async function main() {
   for (const [role, email] of Object.entries(ACCOUNTS)) {
     const user = await prisma.user.findUnique({ where: { email } })
     if (!user) throw new Error(`${email} is not in the database — run \`npm run seed\` first`)
-    const state = {
-      cookies: [
-        {
-          name: ACCESS_COOKIE,
-          value: signToken(user.id, 'access', user.role),
-          domain: 'localhost',
-          path: '/',
-          expires: Math.floor(Date.now() / 1000) + 3600,
-          httpOnly: true,
-          secure: false,
-          sameSite: 'Lax' as const,
-        },
-      ],
-      origins: [],
-    }
-    writeFileSync(`${AUTH}${role}.json`, JSON.stringify(state, null, 2))
+    writeFileSync(`${AUTH}${role}.json`, JSON.stringify(storageFor(user.id, user.role), null, 2))
   }
 
   for (let i = 1; i <= PHOTOS; i++) writeFileSync(`${TMP}photo-${i}.jpg`, await photograph())
@@ -117,6 +139,8 @@ async function main() {
     prisma.agency.findFirstOrThrow({ where: { code: 'DOT' }, select: { id: true } }),
   ])
   const spare = await spareOfficer(dot.id, spareFrom.id)
+  const account = await accountResident()
+  writeFileSync(`${AUTH}account.json`, JSON.stringify(storageFor(account.id, 'CITIZEN'), null, 2))
   writeFileSync(
     `${TMP}ids.json`,
     JSON.stringify(
@@ -127,6 +151,9 @@ async function main() {
         spareOfficerId: spare,
         spareFromBoardId: spareFrom.id,
         spareToBoardId: spareTo.id,
+        // A throwaway password for a throwaway account, regenerated every run and
+        // written only to the git-ignored .tmp folder.
+        accountPassword: account.password,
       },
       null,
       2,

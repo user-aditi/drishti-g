@@ -21,6 +21,20 @@ export interface TokenPayload {
   sub: string
   type: TokenType
   role?: Role
+  /** Seconds since the epoch, set by the signer. */
+  iat?: number
+}
+
+/**
+ * Whether a session predates the account's last password change.
+ *
+ * Tokens have no server-side record to revoke, so a password change instead
+ * refuses anything issued before it. Compared in whole seconds, the resolution
+ * `iat` has, so the session issued in the same second as the change survives.
+ */
+export function issuedBeforePasswordChange(payload: TokenPayload, changedAt: Date | null): boolean {
+  if (!changedAt || payload.iat === undefined) return false
+  return payload.iat < Math.floor(changedAt.getTime() / 1000)
 }
 
 export function hashPassword(plain: string): Promise<string> {
@@ -52,4 +66,27 @@ export function verifyToken(token: string, expected: TokenType): TokenPayload {
     throw new jwt.JsonWebTokenError(`Expected a ${expected} token`)
   }
   return decoded
+}
+
+/**
+ * A short-lived permission to attach photographs to one request.
+ *
+ * Most people file without an account, so there is nobody to authenticate when
+ * their photograph follows the filing a moment later. The filing response hands
+ * them this instead: it names one request, and it expires in an hour.
+ */
+export function signRequestPhotoToken(requestId: number): string {
+  return jwt.sign({ sub: String(requestId), type: 'request-photo' }, env.JWT_SECRET, { expiresIn: '1h' })
+}
+
+/** The request a photo token was issued for, or null if it is invalid, expired or another kind of token. */
+export function verifyRequestPhotoToken(token: string): number | null {
+  try {
+    const decoded = jwt.verify(token, env.JWT_SECRET) as { sub?: string; type?: string }
+    if (decoded.type !== 'request-photo') return null
+    const id = Number(decoded.sub)
+    return Number.isInteger(id) ? id : null
+  } catch {
+    return null
+  }
 }

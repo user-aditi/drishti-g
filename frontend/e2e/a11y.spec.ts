@@ -32,6 +32,8 @@ const PAGES: { path: () => string; role: Role | 'anon'; label?: string }[] = [
     { path: () => '/w', role: 'anon' },
     { path: () => `/w/${code}`, role: 'anon' },
     { path: () => '/my/requests', role: 'citizen' },
+    { path: () => '/notifications', role: 'citizen' },
+    { path: () => '/account', role: 'citizen' },
     { path: () => '/agency/queue', role: 'agent' },
     { path: () => `/agency/sr/${srNumber}`, role: 'agent' },
     { path: () => '/boards', role: 'agent' },
@@ -85,3 +87,34 @@ for (const entry of PAGES) {
         ).toEqual([])
     })
 }
+
+// The filing wizard is one URL with six screens; the list above audits only the
+// first. The location screen carries a map, a pin and the nearby hint, and the
+// photo screen a file input and previews, so each is audited where it stands.
+test('/file location and photo steps as anon: no serious accessibility violations', async ({ browser }) => {
+    const page = await pageAs(browser, 'anon')
+    await page.goto('/file')
+    await page.getByLabel('Street Condition').check()
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.fill('#address', 'E2E — accessibility — 1 TEST STREET')
+    await page.getByText('Enter coordinates instead').click()
+    await page.fill('#lat', '40.6501')
+    await page.fill('#lon', '-73.9496')
+    await page.locator('.leaflet-marker-icon').waitFor()
+
+    const serious = async () =>
+        (
+            await new AxeBuilder({ page })
+                .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+                .exclude('.leaflet-tile-container')
+                .analyze()
+        ).violations
+            .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+            .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(' | ')}`)
+
+    expect(await serious()).toEqual([])
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.locator('#request-photos').waitFor()
+    expect(await serious()).toEqual([])
+})

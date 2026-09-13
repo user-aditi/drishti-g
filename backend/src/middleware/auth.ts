@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express'
 import { Role } from '@prisma/client'
-import { ACCESS_COOKIE, verifyToken } from '../lib/auth.js'
+import { ACCESS_COOKIE, issuedBeforePasswordChange, verifyToken, type TokenPayload } from '../lib/auth.js'
 import { prisma } from '../lib/prisma.js'
 import { asyncHandler, forbidden, unauthorized } from '../utils/http.js'
 
@@ -24,15 +24,18 @@ export const authenticate = asyncHandler(
     const token = tokenFrom(req)
     if (!token) throw unauthorized()
 
-    let userId: number
+    let payload: TokenPayload
     try {
-      userId = Number(verifyToken(token, 'access').sub)
+      payload = verifyToken(token, 'access')
     } catch {
       throw unauthorized('Your session is invalid or has expired')
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId } })
+    const user = await prisma.user.findUnique({ where: { id: Number(payload.sub) } })
     if (!user) throw unauthorized('Your session is invalid or has expired')
+    if (issuedBeforePasswordChange(payload, user.passwordChangedAt)) {
+      throw unauthorized('Your password was changed — please sign in again')
+    }
     // Distinct from 401: the token is fine, the account is switched off.
     if (!user.isActive) throw forbidden('This account has been deactivated')
 
@@ -69,15 +72,15 @@ export const optionalAuthenticate = asyncHandler(
     const token = tokenFrom(req)
     if (!token) return next()
 
-    let userId: number
+    let payload: TokenPayload
     try {
-      userId = Number(verifyToken(token, 'access').sub)
+      payload = verifyToken(token, 'access')
     } catch {
       return next()
     }
 
-    const user = await prisma.user.findUnique({ where: { id: userId } })
-    if (user && user.isActive) {
+    const user = await prisma.user.findUnique({ where: { id: Number(payload.sub) } })
+    if (user && user.isActive && !issuedBeforePasswordChange(payload, user.passwordChangedAt)) {
       req.user = {
         id: user.id,
         email: user.email,

@@ -153,9 +153,11 @@ The server prints the reference date at boot, `/api/v1/health` reports it, and
 | Route | Who | What |
 |---|---|---|
 | `/` | Public | Landing and an SR-number lookup |
-| `/file` | Public | Intake: type → descriptor → location → channel |
+| `/file` | Public | Intake: type → descriptor → location (map pin, nearby duplicates) → photographs → channel |
 | `/sr/[srNumber]` | Public | Status page for any request, no login |
 | `/my/requests` | Citizen | Their own requests |
+| `/notifications` | Signed in | In-app notifications: status changes, questions waiting on you |
+| `/account` | Signed in | Name, phone, home board, and password |
 | `/agency/queue` | Agent | The working register |
 | `/agency/sr/[id]` | Agent | Request detail and status actions |
 | `/boards` | Public | Per community board: volume, median resolution, backlog, filterable by agency |

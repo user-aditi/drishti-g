@@ -21,6 +21,8 @@ test('a member of the public files a request and looks it up by its number', asy
     await page.fill('#address', 'E2E — public filing — 1 TEST STREET')
     await page.selectOption('#board', String(ids().bk04BoardId))
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    // Photographs are optional.
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
     await page.getByRole('button', { name: 'File this request' }).click()
 

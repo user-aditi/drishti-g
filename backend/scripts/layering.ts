@@ -45,6 +45,9 @@ export const LAYER_FILES: Record<Layer, string[]> = {
     'src/middleware/auth.ts',
     'src/lib/jobRuns.ts',
     'src/services/modelSpec.ts',
+    'src/services/notifications.ts',
+    'src/routes/notifications.ts',
+    'src/middleware/photos.ts',
   ],
   1: [
     'src/routes/officer.ts',

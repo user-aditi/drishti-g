@@ -1,7 +1,8 @@
 import { RequestStatus, type Prisma, type ServiceRequest } from '@prisma/client'
 import { badRequest, notFound } from '../utils/http.js'
 import * as audit from './audit.js'
-import { runStatusChangedHooks } from './requestHooks.js'
+import { notify } from './notifications.js'
+import { runStatusChangedHooks, type StatusChange } from './requestHooks.js'
 
 /**
  * Moving a request between NYC's statuses — the one transition every writer
@@ -87,4 +88,37 @@ export async function changeStatus(
   })
 
   return { request, from: existing.status }
+}
+
+const STATUS_WORDS: Record<RequestStatus, string> = {
+  OPEN: 'open',
+  ASSIGNED: 'assigned',
+  STARTED: 'started',
+  IN_PROGRESS: 'in progress',
+  PENDING: 'pending',
+  CLOSED: 'closed',
+  UNSPECIFIED: 'unspecified',
+}
+
+/**
+ * Tell the resident who reported a request that its status changed. Registered
+ * as a status-change hook in app.ts.
+ *
+ * Not when they made the change themselves, and not for anonymous filings —
+ * there is nobody to tell, which is the ordinary case for a 311 phone call.
+ */
+export async function tellReporter(tx: Prisma.TransactionClient, change: StatusChange): Promise<void> {
+  const citizenId = change.request.citizenId
+  if (citizenId === null || citizenId === change.actorId) return
+  const words = STATUS_WORDS[change.to]
+  await notify(tx, {
+    userId: citizenId,
+    kind: 'request.status_changed',
+    title: `${change.request.srNumber} is now ${words}`,
+    body:
+      change.to === RequestStatus.CLOSED
+        ? change.request.resolutionNote ?? 'The agency closed your request.'
+        : `It was ${STATUS_WORDS[change.from]}.`,
+    href: `/sr/${change.request.srNumber}`,
+  })
 }

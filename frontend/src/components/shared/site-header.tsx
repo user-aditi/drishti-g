@@ -82,6 +82,7 @@ export function SiteHeader({
         ...(user?.role === 'COMMISSIONER' ? COMMISSIONER_LINKS : []),
         ...(user?.role === 'ADMIN' ? [...ADMIN_LINKS, ...ADMIN_OPERATIONS_LINKS] : []),
         ...AREA_LINKS,
+        ...(user ? [{ href: '/notifications', label: 'Notifications' }] : []),
     ]
 
     return (
@@ -107,7 +108,7 @@ export function SiteHeader({
                             {counts[link.href] ? (
                                 <span className="ml-1.5 inline-block min-w-5 rounded-full bg-new-soft px-1.5 text-center text-xs font-semibold text-new">
                                     {counts[link.href]}
-                                    <span className="sr-only"> waiting</span>
+                                    <span className="sr-only">{link.href === "/notifications" ? " unread" : " waiting"}</span>
                                 </span>
                             ) : null}
                         </Link>
@@ -118,9 +119,12 @@ export function SiteHeader({
                     <ThemeToggle />
                     {user ? (
                         <div className="flex items-center gap-3">
-                            <span className="hidden text-sm text-ink-soft sm:inline">
+                            <Link
+                                href="/account"
+                                className="hidden text-sm text-ink-mid underline-offset-4 hover:text-brand hover:underline sm:inline"
+                            >
                                 {user.name}
-                            </span>
+                            </Link>
                             <SignOutButton />
                         </div>
                     ) : (

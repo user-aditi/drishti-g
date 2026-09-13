@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import { STATUS_META } from '@/lib/constants'
 import { formatDateTime, relativeTime } from '@/lib/format'
-import type { RequestDetail } from '@/types'
+import type { ProgressStep, RequestDetail } from '@/types'
 
 /**
  * The life of a request, from what the record actually contains.
@@ -16,14 +16,22 @@ import type { RequestDetail } from '@/types'
  * "closed", and inventing "assigned to a crew" or "inspection scheduled" would
  * be manufacturing a record of municipal work that nobody did. A short timeline
  * is the honest one.
+ *
+ * What does appear between them, for a request this system has acted on, is what
+ * this project's layers actually did — an officer answering for it, a crew sent,
+ * an escalation — passed in as `layerSteps` and described by role, never by name.
+ * Those are real events in this system, not reconstructions of New York's.
  */
 export function RequestTimeline({
     request,
     now,
+    layerSteps = [],
 }: {
     request: RequestDetail
     /** The system reference date in epoch ms — see ReferenceDate. */
     now: number
+    /** What later layers did, from the progress endpoint. Filing and closing come from the history instead. */
+    layerSteps?: ProgressStep[]
 }) {
     const stillOpen = request.status !== 'CLOSED'
     const overdue = request.isOverdue && stillOpen
@@ -48,6 +56,11 @@ export function RequestTimeline({
                       ? `Moved from ${STATUS_META[entry.fromStatus].label.toLowerCase()}.`
                       : 'Status recorded.'),
     }))
+
+    for (const step of layerSteps) {
+        if (step.key === 'filed' || step.key === 'closed') continue
+        steps.push({ key: `l-${step.key}`, at: step.at, tone: 'done', title: step.label, detail: step.detail ?? '' })
+    }
 
     if (request.slaDueAt) {
         steps.push({

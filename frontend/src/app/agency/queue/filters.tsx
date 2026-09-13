@@ -1,6 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Search } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
@@ -39,14 +42,40 @@ export function QueueFilters({ boards, types }: { boards: Board[]; types: Reques
     }
 
     const value = (key: string) => params.get(key) ?? ''
+    // Typed freely and applied on Enter, not on every keystroke: each change is
+    // a navigation, and a query per letter would be a page load per letter.
+    const [query, setQuery] = useState(params.get('q') ?? '')
     const flag = (key: string) => params.get(key) === 'true'
     const anyFilter =
-        Boolean(value('orgUnitId') || value('typeId') || value('status')) ||
+        Boolean(value('orgUnitId') || value('typeId') || value('status') || value('q')) ||
         flag('openOnly') ||
         flag('overdue')
 
     return (
         <div className="flex flex-col gap-3 rounded-[var(--radius)] border border-line bg-surface px-4 py-3">
+            <form
+                role="search"
+                className="flex flex-wrap items-end gap-2"
+                onSubmit={(event) => {
+                    event.preventDefault()
+                    set('q', query.trim())
+                }}
+            >
+                <div className="min-w-64 flex-1">
+                    <Label htmlFor="f-q">Search</Label>
+                    <Input
+                        id="f-q"
+                        type="search"
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="SR number, street, or what was reported"
+                    />
+                </div>
+                <Button type="submit" variant="outline">
+                    <Search aria-hidden />
+                    Search
+                </Button>
+            </form>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                     <Label htmlFor="f-board">Community board</Label>
@@ -154,7 +183,10 @@ export function QueueFilters({ boards, types }: { boards: Board[]; types: Reques
                         variant="quiet"
                         size="sm"
                         className="ml-auto"
-                        onClick={() => router.push('/agency/queue')}
+                        onClick={() => {
+                            setQuery('')
+                            router.push('/agency/queue')
+                        }}
                     >
                         Clear filters
                     </Button>

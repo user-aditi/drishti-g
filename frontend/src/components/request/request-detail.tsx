@@ -3,11 +3,12 @@ import { Field } from '@/components/shared/page-heading'
 import { SlaNote } from '@/components/shared/sla-note'
 import { ReferenceDateInline } from '@/components/shared/reference-date'
 import { OverdueMark, ProvenanceMark, SrNumber, StatusPill } from '@/components/shared/request-bits'
+import { RequestPhotos } from './request-photos'
 import { RequestTimeline } from './request-timeline'
 import { CHANNEL_LABEL } from '@/lib/constants'
 import { EMPTY, ageHours, asOf, deadlineLabel, formatDateTime, formatHours } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import type { RequestDetail as RequestDetailShape } from '@/types'
+import type { ProgressStep, RequestDetail as RequestDetailShape } from '@/types'
 
 /**
  * One service request, in full.
@@ -21,12 +22,15 @@ export function RequestDetail({
     request,
     referenceDate,
     actions,
+    progress,
 }: {
     request: RequestDetailShape
     /** The day the API evaluated `isOverdue` on. Everything here uses it. */
     referenceDate: string
     /** Status controls, on the agent's view only. */
     actions?: React.ReactNode
+    /** Steps the later layers contribute to the timeline, where the page fetched them. */
+    progress?: ProgressStep[]
 }) {
     // Judged at the moment the record was observed: the snapshot for NYC's
     // rows, the real clock for requests filed through this replica.
@@ -133,6 +137,9 @@ export function RequestDetail({
                 </PanelBody>
             </Panel>
 
+            {/* Only for the reporter and the agency; anyone else is told how many. */}
+            <RequestPhotos srNumber={request.srNumber} count={request.photoCount} />
+
             {actions}
 
             <div className="grid gap-6 lg:grid-cols-2">
@@ -141,7 +148,7 @@ export function RequestDetail({
                         <PanelTitle>Progress</PanelTitle>
                     </PanelHeader>
                     <PanelBody>
-                        <RequestTimeline request={request} now={now} />
+                        <RequestTimeline request={request} now={now} layerSteps={progress} />
                     </PanelBody>
                 </Panel>
 

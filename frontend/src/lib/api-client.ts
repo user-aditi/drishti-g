@@ -6,7 +6,11 @@ import type {
     Area,
     AuthResult,
     Board,
+    FiledRequest,
     MapCluster,
+    NearbyRequest,
+    NotificationsPage,
+    RequestPhotoMeta,
     NewRequest,
     Paged,
     RequestStatus,
@@ -70,6 +74,30 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     return (await res.json()) as T
 }
 
+/**
+ * A multipart upload. Not through `request()`: setting a JSON content type on
+ * form data would break the boundary the browser generates.
+ */
+async function upload<T>(path: string, form: FormData): Promise<T> {
+    let res: Response
+    try {
+        res = await fetch(`${BROWSER_API}${path}`, { method: 'POST', credentials: 'include', body: form })
+    } catch {
+        throw new ApiError(0, 'Could not reach the service. Check that the API is running.')
+    }
+    if (!res.ok) {
+        let parsed: { error?: string; message?: string } | null = null
+        try {
+            parsed = await res.json()
+        } catch {
+            // Non-JSON error body — fall back to the status.
+        }
+        throw new ApiError(res.status, parsed?.error ?? parsed?.message ?? `Upload failed (${res.status})`)
+    }
+    return (await res.json()) as T
+}
+
+
 export const apiClient = {
     // ---- Session --------------------------------------------------------- //
 
@@ -94,9 +122,39 @@ export const apiClient = {
 
     me: () => request<User>('/auth/me'),
 
+    updateProfile: (body: { name: string; phone?: string | null; orgUnitId?: number | null }) =>
+        request<User>('/auth/me', { method: 'PATCH', body }),
+
+    changePassword: (currentPassword: string, newPassword: string) =>
+        request<{ ok: true }>('/auth/password', { method: 'POST', body: { currentPassword, newPassword } }),
+
+    // ---- Notifications ---------------------------------------------------- //
+
+    notifications: () => request<NotificationsPage>('/notifications'),
+
+    markRead: (id: number) => request<{ ok: true }>(`/notifications/${id}/read`, { method: 'POST', body: {} }),
+
+    markAllRead: () => request<{ ok: true; marked: number }>('/notifications/read-all', { method: 'POST', body: {} }),
+
     // ---- Requests -------------------------------------------------------- //
 
-    file: (body: NewRequest) => request<ServiceRequest>('/requests', { method: 'POST', body }),
+    file: (body: NewRequest) => request<FiledRequest>('/requests', { method: 'POST', body }),
+
+    /** Photographs of the problem, sent right after filing with the token the filing returned. */
+    attachPhotos: (srNumber: string, photos: File[], token: string) => {
+        const form = new FormData()
+        for (const photo of photos) form.append('photos', photo)
+        form.append('token', token)
+        return upload<{ ok: true; count: number }>(`/requests/${encodeURIComponent(srNumber)}/photos`, form)
+    },
+
+    photos: (srNumber: string) =>
+        request<{ srNumber: string; photos: RequestPhotoMeta[] }>(`/requests/${encodeURIComponent(srNumber)}/photos`),
+
+    nearby: (params: { typeId: number; lat: number; lng: number }, signal?: AbortSignal) =>
+        request<{ radiusMetres: number; rows: NearbyRequest[] }>(`/requests/check/nearby${toQuery(params)}`, {
+            signal,
+        }),
 
     lookup: (srNumber: string) =>
         request<ServiceRequest>(`/requests/${encodeURIComponent(srNumber)}`),

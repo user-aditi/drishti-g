@@ -1,4 +1,4 @@
-import type { Prisma, RequestStatus, ServiceRequest } from '@prisma/client'
+import type { Prisma, PrismaClient, RequestStatus, ServiceRequest } from '@prisma/client'
 
 /**
  * Where a later layer attaches to a filing, without Layer 0 knowing it exists.
@@ -62,4 +62,45 @@ export async function runStatusChangedHooks(
   change: StatusChange,
 ): Promise<void> {
   for (const hook of statusHooks.values()) await hook(tx, change)
+}
+
+/**
+ * One step in a request's progress, as the public request page shows it.
+ *
+ * Described by role, never by name: the page is public, and "an officer is
+ * answering for it" tells a resident what they need without publishing who.
+ */
+export interface ProgressStep {
+  /** Stable, for ordering ties and for tests. */
+  key: string
+  label: string
+  at: Date
+  detail?: string | null
+}
+
+export type ProgressDescriber = (
+  db: Prisma.TransactionClient | PrismaClient,
+  request: ServiceRequest,
+) => Promise<ProgressStep[]>
+
+const describers = new Map<string, ProgressDescriber>()
+
+/**
+ * Let a layer add the steps it knows about to a request's progress.
+ *
+ * The same shape as the hooks above, for the same reason: the baseline can say
+ * a request was filed and closed, and nothing else, without knowing that later
+ * layers assign officers, send crews or escalate.
+ */
+export function onDescribeProgress(name: string, describer: ProgressDescriber): void {
+  describers.set(name, describer)
+}
+
+export async function describeProgress(
+  db: Prisma.TransactionClient | PrismaClient,
+  request: ServiceRequest,
+): Promise<ProgressStep[]> {
+  const steps: ProgressStep[] = []
+  for (const describer of describers.values()) steps.push(...(await describer(db, request)))
+  return steps.sort((a, b) => a.at.getTime() - b.at.getTime() || a.key.localeCompare(b.key))
 }

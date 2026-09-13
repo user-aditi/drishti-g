@@ -12,6 +12,8 @@ import { mapRouter } from './routes/map.js'
 import { requestsRouter } from './routes/requests.js'
 import { systemRouter } from './routes/system.js'
 import { taxonomyRouter } from './routes/taxonomy.js'
+import { notificationsRouter } from './routes/notifications.js'
+import { tellReporter } from './services/status.js'
 import { officerRouter } from './routes/officer.js'
 import { supervisorRouter } from './routes/supervisor.js'
 import { workOrdersRouter } from './routes/workOrders.js'
@@ -24,11 +26,11 @@ import { adminPeopleRouter } from './routes/adminPeople.js'
 import { adminSystemRouter } from './routes/adminSystem.js'
 import { GRIE_CONTRACT, GRIE_SPEC_FILE } from './services/grie.js'
 import { declareSpec } from './services/modelSpec.js'
-import { PROOF_CONTRACT } from './services/proof.js'
+import { describeProofProgress, PROOF_CONTRACT } from './services/proof.js'
 import { assignOnFiling } from './services/assignment.js'
-import { withdrawWorkOnClose } from './services/workOrder.js'
-import { resolveEscalationsOnClose } from './services/escalation.js'
-import { onFiled, onStatusChanged } from './services/requestHooks.js'
+import { describeOfficerProgress, withdrawWorkOnClose } from './services/workOrder.js'
+import { describeEscalationProgress, resolveEscalationsOnClose } from './services/escalation.js'
+import { onDescribeProgress, onFiled, onStatusChanged } from './services/requestHooks.js'
 
 /**
  * Where the layers are composed — the one file allowed to know about all of
@@ -58,6 +60,9 @@ export function createApp(): Express {
   app.use(`${api}/boards`, boardsRouter)
   app.use(`${api}/map`, mapRouter)
   app.use(`${api}/audit`, auditRouter)
+  app.use(`${api}/notifications`, notificationsRouter)
+  // The resident who reported a request hears when its status changes.
+  onStatusChanged('layer0:tell-the-reporter', tellReporter)
 
   // ---- Layer 4: photo verification. Ours, not NYC's. -----------------------
   // Mounted before Layer 1's work-order router and on the same path, because it
@@ -66,6 +71,7 @@ export function createApp(): Express {
   // through. Remove this line and Layer 1 behaves exactly as it did before
   // Layer 4 existed — which is the property N5 is about.
   declareSpec({ name: 'Photo verification (recycled-photograph threshold)', file: 'proof-spec.json', contract: PROOF_CONTRACT })
+  onDescribeProgress('layer4:proof', describeProofProgress)
   app.use(api, proofRouter)
 
   // ---- Layer 1: officer identity. Ours, not NYC's. -------------------------
@@ -74,6 +80,7 @@ export function createApp(): Express {
   onFiled('layer1:assign-on-filing', assignOnFiling)
   // And a request that is closed takes its unfinished jobs off the street.
   onStatusChanged('layer1:withdraw-work-on-close', withdrawWorkOnClose)
+  onDescribeProgress('layer1:officer-and-crews', describeOfficerProgress)
   app.use(`${api}/officer`, officerRouter)
   app.use(`${api}/work-orders`, workOrdersRouter)
   app.use(api, supervisorRouter)
@@ -84,6 +91,7 @@ export function createApp(): Express {
   // A request that closes resolves its escalations, so the register can say how
   // long the senior person had it.
   onStatusChanged('layer2:resolve-escalations-on-close', resolveEscalationsOnClose)
+  onDescribeProgress('layer2:escalations', describeEscalationProgress)
   app.use(api, escalationsRouter)
 
   // ---- Layer 3: GRIE, and GCCE's routing report. Ours, not NYC's. ---------

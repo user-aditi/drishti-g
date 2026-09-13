@@ -3,6 +3,7 @@ import { Panel, PanelBody, PanelHeader, PanelTitle } from '@/components/ui/card'
 import { formatDateTime } from '@/lib/format'
 import { getCitizenQuestion } from '@/lib/layer4-server'
 import { proofPhotoUrl } from '@/lib/layer4-urls'
+import { RequestPhotos } from '@/components/request/request-photos'
 import { CitizenVerdict } from './proof-actions'
 
 /**
@@ -49,7 +50,11 @@ export async function CitizenProofPanel({ srNumber }: { srNumber: string }) {
                             The crew wrote: &ldquo;{question.completionNote}&rdquo;
                         </p>
                     )}
+                    {/* Before and after: what they reported, then what the crew sent. */}
+                    <RequestPhotos srNumber={srNumber} title="What you reported" compact />
                     {question.photos.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                        <span className="text-sm text-ink-mid">What the crew sent</span>
                         <div className="flex flex-wrap gap-3">
                             {question.photos.map((photo) => (
                                 // eslint-disable-next-line @next/next/no-img-element
@@ -61,6 +66,7 @@ export async function CitizenProofPanel({ srNumber }: { srNumber: string }) {
                                     className="h-48 w-auto rounded-[var(--radius)] border border-line object-cover"
                                 />
                             ))}
+                        </div>
                         </div>
                     )}
                     <CitizenVerdict workOrderId={question.workOrderId} />

@@ -57,6 +57,7 @@ export default async function AgencyQueuePage({ searchParams }: { searchParams: 
         status: one(searchParams.status) as RequestStatus | undefined,
         openOnly: one(searchParams.openOnly) === 'true',
         overdue: one(searchParams.overdue) === 'true',
+        q: one(searchParams.q)?.trim() || undefined,
     }
 
     let result: Paged<ServiceRequest> | null = null

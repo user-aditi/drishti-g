@@ -12,6 +12,7 @@ import { Panel, PanelBody, PanelHeader, PanelTitle } from '@/components/ui/card'
 import { messageFrom } from '@/lib/api-error'
 import { homeFor, requireUser } from '@/lib/auth'
 import { formatDateTime } from '@/lib/format'
+import { RequestPhotos } from '@/components/request/request-photos'
 import { proofPhotoUrl } from '@/lib/layer4-urls'
 import { getProofQueue } from '@/lib/layer4-server'
 import type { ProofQueue } from '@/types/layer4'
@@ -118,6 +119,13 @@ export default async function VerifyPage() {
                                                         </span>
                                                     )}
                                                 </div>
+
+                                                {/* Before: what the resident reported, when they attached anything. */}
+                                                <RequestPhotos
+                                                    srNumber={row.request.srNumber}
+                                                    title="Reported with"
+                                                    compact
+                                                />
 
                                                 {row.photos.length > 0 && (
                                                     <div className="flex flex-wrap gap-3">

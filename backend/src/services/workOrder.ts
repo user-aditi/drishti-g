@@ -12,7 +12,7 @@
 import { randomInt } from 'node:crypto'
 import { RequestStatus, type Prisma, type PrismaClient } from '@prisma/client'
 import * as audit from './audit.js'
-import type { StatusChange } from './requestHooks.js'
+import type { ProgressStep, StatusChange } from './requestHooks.js'
 
 export type Db = PrismaClient | Prisma.TransactionClient
 
@@ -120,3 +120,32 @@ export async function withdrawWorkOnClose(
   })
 }
 
+
+/**
+ * Layer 1's steps in a request's progress: an officer answering for it, crews
+ * sent, work reported done. By role, never by name — the page is public.
+ * Registered in app.ts.
+ */
+export async function describeOfficerProgress(
+  db: PrismaClient | Prisma.TransactionClient,
+  request: { id: number; assignedAt: Date | null; assignedOfficerId: number | null },
+): Promise<ProgressStep[]> {
+  const steps: ProgressStep[] = []
+  if (request.assignedOfficerId !== null && request.assignedAt) {
+    steps.push({ key: 'assigned', label: 'An officer is answering for it', at: request.assignedAt })
+  }
+  const orders = await db.workOrder.findMany({
+    where: { requestId: request.id },
+    select: { id: true, issuedAt: true, completedAt: true, cancelledAt: true },
+  })
+  for (const order of orders) {
+    steps.push({ key: `job-${order.id}`, label: 'A crew was sent', at: order.issuedAt })
+    if (order.completedAt) {
+      steps.push({ key: `job-${order.id}-done`, label: 'The crew reported the work done', at: order.completedAt })
+    }
+    if (order.cancelledAt) {
+      steps.push({ key: `job-${order.id}-withdrawn`, label: 'A crew job was withdrawn', at: order.cancelledAt })
+    }
+  }
+  return steps
+}

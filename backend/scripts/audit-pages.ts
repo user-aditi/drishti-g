@@ -80,6 +80,10 @@ function checks(ids: Ids): Check[] {
     page('/register', 'anon'),
     page(`/sr/${ids.dotSr}`, 'anon'),
     page('/my/requests', 'citizen'),
+    page('/notifications', 'citizen'),
+    page('/account', 'citizen'),
+    page('/notifications', 'officer'),
+    page('/account', 'admin'),
     page('/agency/queue', 'agent'),
     page(`/agency/sr/${ids.dotSr}`, 'agent'),
     page('/boards', 'agent'),
@@ -123,6 +127,8 @@ function checks(ids: Ids): Check[] {
     denied('/supervisor/assign', 'anon'),
     denied('/admin/risk', 'anon'),
     denied('/admin/people', 'anon'),
+    denied('/notifications', 'anon'),
+    denied('/account', 'anon'),
     // Signed in as the wrong role. The risk register is a model's statement about
     // the people who work at a board, and N13 keeps it from the agencies scored.
     denied('/admin/risk', 'officer'),

@@ -40,6 +40,8 @@ export function publicUser(user: User & { agency?: Agency | null; orgUnit?: OrgU
     id: user.id,
     email: user.email,
     name: user.name,
+    // The person's own, and only ever sent back to them (sign-in and /auth/me).
+    phone: user.phone,
     role: user.role,
     agency: user.agency ? publicAgency(user.agency) : null,
     orgUnit: user.orgUnit ? { id: user.orgUnit.id, code: user.orgUnit.code, name: user.orgUnit.name } : null,

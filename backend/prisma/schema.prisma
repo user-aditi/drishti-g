@@ -346,6 +346,7 @@ model ServiceRequest {
   assignedOfficer User?              @relation("RequestOfficer", fields: [assignedOfficerId], references: [id], onDelete: Restrict)
 
   history     RequestStatusHistory[]
+  photos      RequestPhoto[]
   assignments Assignment[]
   workOrders  WorkOrder[]
   escalations Escalation[]
@@ -365,6 +366,51 @@ model ServiceRequest {
   /// The escalation sweep: live, open, past its deadline.
   @@index([isImported, status, slaDueAt])
   @@map("service_requests")
+}
+
+/// A photograph of the problem, attached by whoever filed the request.
+///
+/// NYC's own online form takes attachments, so this is part of the replica, not
+/// one of our layers. Not public: a photograph of a street can hold a face or a
+/// number plate, so only the person who reported it and the agency see it.
+model RequestPhoto {
+  id         Int      @id @default(autoincrement())
+  requestId  Int
+  /// Generated here, never the name the uploader chose.
+  storedName String   @unique
+  mimeType   String
+  bytes      Int
+  sha256     String
+  width      Int?
+  height     Int?
+  uploadedAt DateTime @default(now())
+
+  request ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@map("request_photos")
+}
+
+/// Something that happened that a person should hear about, shown in the app.
+///
+/// In-app only. An academic replica has no business sending email or texts to
+/// anyone, and a notification that can only be read here says so by being here.
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  /// A short machine name for what happened, e.g. `request.status_changed`.
+  kind      String
+  title     String
+  body      String
+  /// Where to go to act on it, inside the app.
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
 }
 
 /// Every status transition this system observed.
@@ -423,12 +469,18 @@ model User {
 
   isActive Boolean @default(true)
 
+  /// Sessions are signed tokens with no server-side record, so a password change
+  /// cannot revoke them one by one. Instead any token issued before this moment
+  /// is refused: changing a password signs every other device out.
+  passwordChangedAt DateTime?
+
   agency  Agency?  @relation(fields: [agencyId], references: [id], onDelete: SetNull)
   orgUnit OrgUnit? @relation(fields: [orgUnitId], references: [id], onDelete: SetNull)
 
-  requests    ServiceRequest[]       @relation("RequestCitizen")
-  transitions RequestStatusHistory[]
-  auditEvents AuditEvent[]
+  requests      ServiceRequest[]       @relation("RequestCitizen")
+  transitions   RequestStatusHistory[]
+  auditEvents   AuditEvent[]
+  notifications Notification[]
 
   // Layer 1
   postings            Posting[]

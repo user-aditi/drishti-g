@@ -6,6 +6,8 @@ import { expect, request, type APIRequestContext, type Browser, type Page } from
 export const API = process.env.E2E_API_URL ?? 'http://localhost:4000/api/v1'
 
 export type Role = 'citizen' | 'agent' | 'officer' | 'supervisor' | 'commissioner' | 'admin'
+    /** A resident kept for the account journey, whose password the tests change. */
+    | 'account'
 
 /** A role's signed session, written by the global setup. */
 export const stateFor = (role: Role) => path.join(__dirname, '.auth', `${role}.json`)
@@ -21,6 +23,7 @@ export function ids(): {
     spareOfficerId: number
     spareFromBoardId: number
     spareToBoardId: number
+    accountPassword: string
 } {
     return JSON.parse(readFileSync(path.join(__dirname, '.tmp', 'ids.json'), 'utf8'))
 }
@@ -46,7 +49,11 @@ export async function pageAs(browser: Browser, role: Role | 'anon'): Promise<Pag
  * whose session the journeys use. The address says E2E so the row can never be
  * mistaken for NYC's record or a real report.
  */
-export async function fileRequest(client: APIRequestContext, label: string) {
+export async function fileRequest(
+    client: APIRequestContext,
+    label: string,
+    extra: { latitude?: number; longitude?: number } = {},
+) {
     const { streetConditionTypeId, bk04BoardId } = ids()
     const response = await client.post('requests', {
         data: {
@@ -54,6 +61,7 @@ export async function fileRequest(client: APIRequestContext, label: string) {
             orgUnitId: bk04BoardId,
             address: `E2E — ${label} — 1 TEST STREET`,
             channel: 'ONLINE',
+            ...extra,
         },
     })
     expect(response.ok(), await response.text()).toBeTruthy()

@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, Public_Sans } from 'next/font/google'
 import { THEME_BOOT_SCRIPT } from '@/components/shared/theme-toggle'
 import { SiteHeader } from '@/components/shared/site-header'
 import { SiteFooter } from '@/components/shared/site-footer'
+import { getUnreadCount } from '@/lib/api'
 import { auth } from '@/lib/auth'
 import { getWaiting } from '@/lib/layer4-server'
 import './globals.css'
@@ -61,13 +62,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
     // Layer 4: how many crews are waiting on this resident's answer, shown beside
     // their own register. A failure costs the count, never the page.
-    let counts: Record<string, number> = {}
+    const counts: Record<string, number> = {}
     if (user?.role === 'CITIZEN') {
         try {
             const waiting = await getWaiting()
-            if (waiting.rows.length > 0) counts = { '/my/requests': waiting.rows.length }
+            if (waiting.rows.length > 0) counts['/my/requests'] = waiting.rows.length
         } catch {
-            counts = {}
+            // No count, same page.
+        }
+    }
+    // Unread notifications, for anyone signed in.
+    if (user) {
+        try {
+            const { unread } = await getUnreadCount()
+            if (unread > 0) counts['/notifications'] = unread
+        } catch {
+            // No count, same page.
         }
     }
 

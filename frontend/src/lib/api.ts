@@ -7,8 +7,10 @@ import type {
     Board,
     Health,
     MapCluster,
+    NotificationsPage,
     Paged,
     RequestDetail,
+    RequestProgress,
     RequestType,
     ServiceRequest,
     User,
@@ -103,3 +105,10 @@ export const verifyAudit = () => serverFetch<AuditVerification>('/audit/verify')
 
 /** Carries the reference date the whole system reads "overdue" against. */
 export const getHealth = () => serverFetch<Health>('/health')
+
+export const getProgress = (srNumber: string) =>
+    serverFetch<RequestProgress>(`/requests/${encodeURIComponent(srNumber)}/progress`)
+
+export const getNotifications = () => serverFetch<NotificationsPage>('/notifications')
+
+export const getUnreadCount = () => serverFetch<{ unread: number }>('/notifications/unread-count')

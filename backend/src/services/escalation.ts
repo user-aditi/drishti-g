@@ -28,6 +28,8 @@ import {
   type PrismaClient,
 } from '@prisma/client'
 import * as audit from './audit.js'
+import { notify } from './notifications.js'
+import type { ProgressStep } from './requestHooks.js'
 
 type Db = PrismaClient | Prisma.TransactionClient
 
@@ -110,10 +112,24 @@ export async function escalate(tx: Prisma.TransactionClient, input: EscalateInpu
       at: input.at,
     },
   })
-  await tx.serviceRequest.update({
+  const request = await tx.serviceRequest.update({
     where: { id: input.requestId },
     data: { escalationLevel: input.toLevel },
+    select: { srNumber: true },
   })
+  // The person it reached should not have to find it in a register to know.
+  if (senior) {
+    await notify(tx, {
+      userId: senior.id,
+      kind: 'escalation.reached_you',
+      title: `${request.srNumber} has been escalated to you`,
+      body:
+        input.trigger === EscalationTrigger.MANUAL
+          ? `Raised by ${input.raisedByLabel}: “${input.reason}”`
+          : input.reason,
+      href: '/supervisor/escalations',
+    })
+  }
   await audit.record(tx, {
     action: 'request.escalated',
     entityType: 'request',
@@ -297,4 +313,32 @@ export async function resolveEscalationsOnClose(
       data: { resolvedAt: null },
     })
   }
+}
+
+/**
+ * Layer 2's steps in a request's progress. By rung, never by name. Registered
+ * in app.ts.
+ */
+export async function describeEscalationProgress(
+  db: PrismaClient | Prisma.TransactionClient,
+  request: { id: number },
+): Promise<ProgressStep[]> {
+  const rungs = await db.escalation.findMany({
+    where: { requestId: request.id },
+    select: { id: true, toLevel: true, trigger: true, at: true, acknowledgedAt: true },
+  })
+  const steps: ProgressStep[] = []
+  for (const rung of rungs) {
+    const name = LEVEL_NAME[rung.toLevel] ?? `level ${rung.toLevel}`
+    steps.push({
+      key: `escalation-${rung.id}`,
+      label: `Escalated to the ${name}`,
+      at: rung.at,
+      detail: rung.trigger === EscalationTrigger.SLA_BREACH ? 'Automatically, past its deadline' : 'Raised by hand',
+    })
+    if (rung.acknowledgedAt) {
+      steps.push({ key: `escalation-${rung.id}-ack`, label: `The ${name} acknowledged it`, at: rung.acknowledgedAt })
+    }
+  }
+  return steps
 }

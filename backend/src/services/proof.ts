@@ -22,7 +22,11 @@ import { recordRun, registerJob } from '../lib/jobRuns.js'
 import { ProofOutcome, RequestStatus, type Prisma, type PrismaClient } from '@prisma/client'
 import { env } from '../config/env.js'
 import { distanceMetres } from './exif.js'
-import { hamming } from './proofImage.js'
+import { readFile } from 'node:fs/promises'
+import { storedPath } from '../middleware/photos.js'
+import { dHashOf, hamming } from './proofImage.js'
+import { notify } from './notifications.js'
+import type { ProgressStep } from './requestHooks.js'
 import { loadSpec, type SpecEnvelope } from './modelSpec.js'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -93,7 +97,16 @@ export async function assess(db: Db, workOrderId: number): Promise<Assessment> {
     where: { id: workOrderId },
     include: {
       photos: true,
-      request: { select: { citizenId: true, latitude: true, longitude: true, slaDueAt: true } },
+      request: {
+        select: {
+          citizenId: true,
+          latitude: true,
+          longitude: true,
+          slaDueAt: true,
+          // What the resident sent when they filed: a crew must not send it back.
+          photos: { select: { storedName: true, sha256: true } },
+        },
+      },
     },
   })
 
@@ -168,6 +181,41 @@ export async function assess(db: Db, workOrderId: number): Promise<Assessment> {
           recycled = `This is the same photograph already sent against job ${near.workOrder.code}, saved again.`
           break
         }
+      }
+    }
+  }
+
+  /*
+   * Nor may it be the resident's own photograph of the problem.
+   *
+   * Since Phase 12 a resident can attach a picture when they file. A crew that
+   * sent that picture back as the finished job would be sending the one image
+   * certain to show the problem unfixed, and the resident asked to confirm it
+   * would be looking at their own photograph. Compared the same two ways.
+   */
+  if (recycled == null && photos.length > 0 && order.request.photos.length > 0) {
+    const theirs = await Promise.all(
+      order.request.photos.map(async (photo) => {
+        let dHash: string | null = null
+        if (spec) {
+          try {
+            dHash = await dHashOf(await readFile(storedPath(photo.storedName)))
+          } catch {
+            // The resident's file is gone; exact identity still compares.
+          }
+        }
+        return { sha256: photo.sha256, dHash }
+      }),
+    )
+    for (const photo of photos) {
+      const match = theirs.find((other) => {
+        if (other.sha256 === photo.sha256) return true
+        const distance = spec ? hamming(photo.dHash, other.dHash) : null
+        return distance !== null && distance <= spec!.threshold
+      })
+      if (match) {
+        recycled = 'This is the photograph the resident attached when they reported the problem, sent back.'
+        break
       }
     }
   }
@@ -282,18 +330,41 @@ export async function assess(db: Db, workOrderId: number): Promise<Assessment> {
   return { score, checks, outcome }
 }
 
-/** Store an assessment against its work order. */
-export function save(db: Db, workOrderId: number, result: Assessment) {
+/**
+ * Store an assessment against its work order, and ask the resident when it is
+ * their turn.
+ *
+ * The question used to wait on the request page for a resident who happened to
+ * open it. Now they are told, once, at the moment the question is put.
+ */
+export async function save(db: Db, workOrderId: number, result: Assessment) {
   const data = {
     score: result.score,
     checks: result.checks as unknown as Prisma.InputJsonValue,
     outcome: result.outcome,
   }
-  return db.workProof.upsert({
+  const before = await db.workProof.findUnique({ where: { workOrderId }, select: { outcome: true } })
+  const saved = await db.workProof.upsert({
     where: { workOrderId },
     create: { workOrderId, ...data },
     update: data,
   })
+  if (result.outcome === ProofOutcome.NEEDS_CITIZEN && before?.outcome !== ProofOutcome.NEEDS_CITIZEN) {
+    const order = await db.workOrder.findUniqueOrThrow({
+      where: { id: workOrderId },
+      select: { request: { select: { srNumber: true, citizenId: true } } },
+    })
+    if (order.request.citizenId !== null) {
+      await notify(db, {
+        userId: order.request.citizenId,
+        kind: 'proof.needs_citizen',
+        title: `Has ${order.request.srNumber} been fixed?`,
+        body: 'The crew has reported the work done and sent photographs. You reported it, so you are asked first.',
+        href: `/sr/${order.request.srNumber}`,
+      })
+    }
+  }
+  return saved
 }
 
 /**
@@ -393,4 +464,38 @@ export function startProofSweep(
   const timer = setInterval(() => void tick(), intervalMs)
   void tick()
   return () => clearInterval(timer)
+}
+
+/**
+ * Layer 4's steps in a request's progress: photographs of the finished work
+ * received, and what became of them. Registered in app.ts.
+ */
+export async function describeProofProgress(
+  db: Db,
+  request: { id: number },
+): Promise<ProgressStep[]> {
+  const proofs = await db.workProof.findMany({
+    where: { workOrder: { requestId: request.id } },
+    select: { id: true, outcome: true, createdAt: true, citizenAt: true, citizenVerdict: true, decidedAt: true },
+  })
+  const steps: ProgressStep[] = []
+  for (const proof of proofs) {
+    if (proof.outcome === ProofOutcome.REJECTED && proof.decidedAt === null) continue
+    steps.push({ key: `proof-${proof.id}`, label: 'Photographs of the finished work received', at: proof.createdAt })
+    if (proof.citizenAt) {
+      steps.push({
+        key: `proof-${proof.id}-citizen`,
+        label: proof.citizenVerdict ? 'The reporter confirmed the work' : 'The reporter said the work is not done',
+        at: proof.citizenAt,
+      })
+    }
+    if (proof.decidedAt) {
+      steps.push({
+        key: `proof-${proof.id}-decided`,
+        label: proof.outcome === ProofOutcome.CONFIRMED ? 'An officer accepted the work' : 'An officer sent the work back',
+        at: proof.decidedAt,
+      })
+    }
+  }
+  return steps
 }

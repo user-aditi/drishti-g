@@ -39,7 +39,7 @@ export default async function FilePage() {
         <PageShell width="text">
             <PageHeading
                 title="File a service request"
-                description="Five short steps. You will get an SR number at the end that lets you check on it without an account."
+                description="Six short steps, two of them optional. You will get an SR number at the end that lets you check on it without an account."
             />
 
             {error ? (

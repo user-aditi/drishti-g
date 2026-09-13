@@ -116,6 +116,8 @@ export interface StatusChange {
 export interface RequestDetail extends ServiceRequest {
     history: StatusChange[]
     slaNote: string | null
+    /** How many photographs the reporter attached. The photographs are not public. */
+    photoCount?: number
 }
 
 /** A community board with its published volume figures. */
@@ -167,6 +169,7 @@ export interface User {
     id: number
     email: string
     name: string
+    phone?: string | null
     role: Role
     agency: Agency | null
     orgUnit: OrgUnitRef | null
@@ -231,4 +234,58 @@ export interface QueueQuery {
     page: number
     pageSize: number
     sort?: QueueSort
+}
+
+// ---- Phase 12: the resident's side ---------------------------------------- //
+
+/** What filing returns: the request, and a short-lived permission to attach photographs. */
+export interface FiledRequest extends ServiceRequest {
+    photoToken: string
+}
+
+export interface RequestPhotoMeta {
+    id: number
+    mimeType: string
+    width: number | null
+    height: number | null
+    uploadedAt: string
+}
+
+export interface NearbyRequest {
+    srNumber: string
+    address: string | null
+    createdAt: string
+    status: RequestStatus
+    metres: number
+}
+
+export interface ProgressStep {
+    key: string
+    label: string
+    at: string
+    detail?: string | null
+}
+
+export interface RequestProgress {
+    srNumber: string
+    status: RequestStatus
+    steps: ProgressStep[]
+}
+
+export interface AppNotification {
+    id: number
+    kind: string
+    title: string
+    body: string
+    href: string | null
+    readAt: string | null
+    createdAt: string
+}
+
+export interface NotificationsPage {
+    rows: AppNotification[]
+    total: number
+    unread: number
+    page: number
+    pageSize: number
 }
