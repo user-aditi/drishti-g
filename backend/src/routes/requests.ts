@@ -4,9 +4,11 @@ import { z } from 'zod'
 import { referenceDate } from '../config/systemClock.js'
 import { prisma } from '../lib/prisma.js'
 import { authenticate, requireAgent } from '../middleware/auth.js'
+import { rateLimit } from '../middleware/rateLimit.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
 import { runFiledHooks } from '../services/requestHooks.js'
+import { changeStatus } from '../services/status.js'
 import { nextSrNumber, routeRequest } from '../services/routing.js'
 import { asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
 import { publicRequest } from '../utils/serialize.js'
@@ -46,6 +48,14 @@ const fileSchema = z.object({
  */
 requestsRouter.post(
   '/',
+  // Filing is open to anyone, which is the point; it is not open to a script
+  // filing as fast as it can post.
+  rateLimit({
+    bucket: 'filing',
+    windowMs: 60_000,
+    max: 20,
+    message: 'Too many requests filed from here in the last minute. Wait a moment and try again.',
+  }),
   validate(fileSchema),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof fileSchema>
@@ -280,55 +290,23 @@ requestsRouter.patch(
     const id = Number(req.params.id)
     if (!Number.isInteger(id)) throw badRequest('Invalid request id')
     const body = req.body as z.infer<typeof statusSchema>
-    const at = new Date()
-
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await tx.serviceRequest.findUnique({
         where: { id },
-        select: { id: true, srNumber: true, status: true, agencyId: true, closedAt: true },
+        select: { agencyId: true },
       })
       if (!existing) throw notFound('No such request')
       if (req.user!.agencyId !== null && existing.agencyId !== req.user!.agencyId) {
         throw forbidden('That request belongs to another agency')
       }
-      if (existing.status === body.status) {
-        throw badRequest('The request is already in that status')
-      }
-
-      const request = await tx.serviceRequest.update({
-        where: { id },
-        data: {
-          status: body.status,
-          resolutionNote: body.note ?? undefined,
-          // Closing stamps a real time; reopening clears it, so "closed" and
-          // "has a closedAt" can never disagree.
-          closedAt:
-            body.status === RequestStatus.CLOSED ? (existing.closedAt ?? at) : null,
-        },
-        include: REQUEST_INCLUDE,
-      })
-
-      await tx.requestStatusHistory.create({
-        data: {
-          requestId: id,
-          fromStatus: existing.status,
-          toStatus: body.status,
-          at,
-          actorId: req.user!.id,
-          note: body.note ?? null,
-        },
-      })
-
-      await audit.record(tx, {
-        action: 'request.status_changed',
-        entityType: 'request',
-        entityId: id,
-        payload: { srNumber: existing.srNumber, from: existing.status, to: body.status },
+      await changeStatus(tx, {
+        requestId: id,
+        status: body.status,
+        note: body.note,
         actorId: req.user!.id,
         actorLabel: req.user!.name,
       })
-
-      return request
+      return tx.serviceRequest.findUniqueOrThrow({ where: { id }, include: REQUEST_INCLUDE })
     })
 
     // Closing or reopening moves a request between open and closed on its

@@ -78,3 +78,16 @@ export interface CitizenQuestion {
     photos: ProofPhoto[]
     proof: ProofView
 }
+
+/** A job a crew says is finished, on a request this resident reported and has not answered. */
+export interface WaitingRow {
+    workOrderId: number
+    srNumber: string
+    type: string
+    address: string | null
+    completedAt: string | null
+}
+
+export interface Waiting {
+    rows: WaitingRow[]
+}

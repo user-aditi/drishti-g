@@ -10,7 +10,9 @@
  * credential.
  */
 import { randomInt } from 'node:crypto'
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { RequestStatus, type Prisma, type PrismaClient } from '@prisma/client'
+import * as audit from './audit.js'
+import type { StatusChange } from './requestHooks.js'
 
 export type Db = PrismaClient | Prisma.TransactionClient
 
@@ -83,3 +85,38 @@ export function stateOf(
 export function workerLink(appUrl: string, code: string): string {
   return `${appUrl.replace(/\/$/, '')}/w/${code}`
 }
+
+/**
+ * Withdraw a request's unfinished jobs when the request is closed.
+ *
+ * Registered as a status-change hook. Without it a closed request kept its jobs
+ * live: the code still opened the job, and a crew could report finished work,
+ * with photographs, on a request that had already been closed. Only jobs still
+ * out are withdrawn — a job already reported done stays a record of what the
+ * crew said.
+ */
+export async function withdrawWorkOnClose(
+  tx: Prisma.TransactionClient,
+  change: StatusChange,
+): Promise<void> {
+  if (change.to !== RequestStatus.CLOSED) return
+  const open = await tx.workOrder.findMany({
+    where: { requestId: change.request.id, completedAt: null, cancelledAt: null },
+    select: { id: true, code: true },
+  })
+  if (open.length === 0) return
+
+  await tx.workOrder.updateMany({
+    where: { id: { in: open.map((order) => order.id) } },
+    data: { cancelledAt: change.at },
+  })
+  await audit.record(tx, {
+    action: 'work_order.withdrawn_on_close',
+    entityType: 'request',
+    entityId: change.request.id,
+    payload: { srNumber: change.request.srNumber, codes: open.map((order) => order.code) },
+    actorId: change.actorId,
+    actorLabel: change.actorLabel,
+  })
+}
+

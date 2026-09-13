@@ -4,8 +4,11 @@ import { z } from 'zod'
 import { referenceDate } from '../config/systemClock.js'
 import { prisma } from '../lib/prisma.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
+import { validate } from '../middleware/validate.js'
+import { changeStatus } from '../services/status.js'
 import { asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
 import { LAYER1_INCLUDE, layer1Request } from '../utils/serializeLayer1.js'
+import { invalidateBoards, warmBoards } from './boards.js'
 
 /**
  * The officer's desk. Layer 1 — nothing here exists in NYC 311.
@@ -113,3 +116,66 @@ officerRouter.get(
     })
   }),
 )
+
+const statusSchema = z.object({
+  status: z.nativeEnum(RequestStatus),
+  note: z.string().max(2000).optional(),
+})
+
+/**
+ * Change a request's status as the person who answers for it — above all, close
+ * it.
+ *
+ * Before Phase 9 only an agent could. The officer could assign a crew, receive
+ * its photographs and accept the work, and then had no way to close the request
+ * the work was for: the crew page said "the officer will close the request" and
+ * the verification page said "close it on the request itself", which offered no
+ * such control.
+ *
+ * The transition is Layer 0's shared one, so the history row, the audit entry
+ * and the closedAt rule are identical whoever makes the change. What differs is
+ * who may: the officer the request is assigned to, or a supervisor of its
+ * agency.
+ */
+officerRouter.patch(
+  '/requests/:id/status',
+  authenticate,
+  requireRole(Role.OFFICER, Role.SUPERVISOR),
+  validate(statusSchema),
+  asyncHandler(async (req, res) => {
+    const id = Number(req.params.id)
+    if (!Number.isInteger(id)) throw badRequest('Invalid request id')
+    const body = req.body as z.infer<typeof statusSchema>
+    const user = req.user!
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await tx.serviceRequest.findUnique({
+        where: { id },
+        select: { agencyId: true, assignedOfficerId: true },
+      })
+      if (!existing) throw notFound('No such request')
+      const allowed =
+        user.role === Role.OFFICER
+          ? existing.assignedOfficerId === user.id
+          : existing.agencyId === user.agencyId
+      if (!allowed) {
+        throw forbidden(
+          'Only the officer who answers for this request, or its agency\u2019s supervisor, can change its status',
+        )
+      }
+      await changeStatus(tx, {
+        requestId: id,
+        status: body.status,
+        note: body.note,
+        actorId: user.id,
+        actorLabel: user.name,
+      })
+      return tx.serviceRequest.findUniqueOrThrow({ where: { id }, include: LAYER1_INCLUDE })
+    })
+
+    invalidateBoards()
+    warmBoards()
+    res.json(layer1Request(updated, referenceDate()))
+  }),
+)
+

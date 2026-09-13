@@ -45,6 +45,8 @@ const LOWER_LAYER_FILES = [
   'src/services/requestHooks.ts',
   'src/utils/serialize.ts',
   'src/config/systemClock.ts',
+  'src/services/status.ts',
+  'src/middleware/rateLimit.ts',
   'src/routes/officer.ts',
   'src/routes/supervisor.ts',
   'src/routes/workOrders.ts',

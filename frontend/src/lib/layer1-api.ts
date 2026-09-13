@@ -1,4 +1,5 @@
 import { request } from './api-client'
+import type { RequestStatus } from '@/types'
 import type {
     IssuedWorkOrder,
     Layer1Detail,
@@ -9,6 +10,13 @@ import type {
 
 /** Layer 1's browser-side calls. See `layer1-server.ts` for why this is separate. */
 export const layer1Client = {
+    /** Change a request's status as the officer who answers for it, or a supervisor. */
+    setStatus: (requestId: number, status: RequestStatus, note?: string) =>
+        request<Layer1Request>(`/officer/requests/${requestId}/status`, {
+            method: 'PATCH',
+            body: { status, ...(note ? { note } : {}) },
+        }),
+
     issueWorkOrder: (requestId: number, instructions?: string) =>
         request<IssuedWorkOrder>('/work-orders', {
             method: 'POST',

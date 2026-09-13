@@ -56,7 +56,14 @@ const AGENT_LINKS: NavLink[] = [
     { href: '/map', label: 'Map' },
 ]
 
-export function SiteHeader({ user }: { user: User | null }) {
+export function SiteHeader({
+    user,
+    counts = {},
+}: {
+    user: User | null
+    /** A number to show beside a link, by its href — something waiting there. */
+    counts?: Record<string, number>
+}) {
     const links = [
         ...PUBLIC_LINKS,
         ...(user?.role === 'CITIZEN' ? CITIZEN_LINKS : []),
@@ -87,6 +94,12 @@ export function SiteHeader({ user }: { user: User | null }) {
                             className="text-base text-ink-mid hover:text-brand hover:underline underline-offset-4"
                         >
                             {link.label}
+                            {counts[link.href] ? (
+                                <span className="ml-1.5 inline-block min-w-5 rounded-full bg-new-soft px-1.5 text-center text-xs font-semibold text-new">
+                                    {counts[link.href]}
+                                    <span className="sr-only"> waiting</span>
+                                </span>
+                            ) : null}
                         </Link>
                     ))}
                 </nav>

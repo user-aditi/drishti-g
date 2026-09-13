@@ -5,6 +5,7 @@ import { REFRESH_COOKIE, hashPassword, signToken, verifyPassword, verifyToken } 
 import { clearAuthCookies, setAuthCookies } from '../lib/cookies.js'
 import { prisma } from '../lib/prisma.js'
 import { authenticate } from '../middleware/auth.js'
+import { rateLimit } from '../middleware/rateLimit.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
 import { asyncHandler, conflict, unauthorized } from '../utils/http.js'
@@ -44,6 +45,12 @@ function tokensFor(user: { id: number; role: Role }) {
  */
 authRouter.post(
   '/register',
+  rateLimit({
+    bucket: 'register',
+    windowMs: 60_000,
+    max: 10,
+    message: 'Too many accounts created from here in the last minute. Wait a moment and try again.',
+  }),
   validate(registerSchema),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof registerSchema>
@@ -85,6 +92,13 @@ authRouter.post(
 
 authRouter.post(
   '/login',
+  // Without this a password could be guessed as fast as a script can ask.
+  rateLimit({
+    bucket: 'login',
+    windowMs: 60_000,
+    max: 20,
+    message: 'Too many sign-in attempts from here. Wait a minute and try again.',
+  }),
   validate(loginSchema),
   asyncHandler(async (req, res) => {
     const { email, password } = req.body as z.infer<typeof loginSchema>

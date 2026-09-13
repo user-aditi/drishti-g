@@ -47,6 +47,8 @@ const LAYER0_FILES = [
   'src/services/requestHooks.ts',
   'src/utils/serialize.ts',
   'src/config/systemClock.ts',
+  'src/services/status.ts',
+  'src/middleware/rateLimit.ts',
 ]
 const LAYER1_TERMS = /\b(officer|supervisor|posting|assignment|assignedOfficer|workOrder|work_order|OFFICER|SUPERVISOR)\w*/
 
@@ -107,6 +109,13 @@ async function latency(): Promise<Result> {
       -- officer was posted was never Layer 1's to assign, and counting it would
       -- report a missing assignment the layer had no chance to make.
       AND r."createdAt" >= (SELECT MIN("createdAt") FROM postings)
+      -- Never the demo seed's requests. They are backdated on purpose, so their
+      -- "latency" would measure the backdating rather than the system. The seed
+      -- marks each filing on the audit chain, which is what identifies them here.
+      AND r.id::text NOT IN (
+        SELECT a."entityId" FROM audit_events a
+        WHERE a.action = 'request.filed' AND a.payload->>'demo' = 'true'
+      )
   `
   const filed = Number(row!.filed)
   const assigned = Number(row!.assigned)
@@ -119,7 +128,7 @@ async function latency(): Promise<Result> {
         ? 'no requests have been filed through this system since Layer 1 went live, so there is nothing to time yet'
         : `${assigned} of ${filed} requests filed here since Layer 1 went live were assigned; filing to first assignment ` +
           `p50 ${fmt(row!.p50 === null ? null : Number(row!.p50))}, p95 ${fmt(row!.p95 === null ? null : Number(row!.p95))}, ` +
-          `max ${fmt(row!.max === null ? null : Number(row!.max))} (imported requests excluded)`,
+          `max ${fmt(row!.max === null ? null : Number(row!.max))} (imported and demo-seeded requests excluded)`,
   }
 }
 

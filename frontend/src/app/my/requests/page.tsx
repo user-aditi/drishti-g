@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { PageHeading, PageShell } from '@/components/shared/page-heading'
 import { RequestRegister } from '@/components/request/request-register'
+import { WaitingOnYou } from '@/components/layer4/waiting-on-you'
 import { ErrorNotice } from '@/components/shared/notices'
 import { ReferenceDate } from '@/components/shared/reference-date'
 import { Button } from '@/components/ui/button'
@@ -59,6 +60,9 @@ export default async function MyRequestsPage() {
                     </Button>
                 }
             />
+
+            {/* Layer 4: anything a crew says is done and this resident has not answered. */}
+            <WaitingOnYou />
 
             {error ? (
                 <ErrorNotice title="Could not load your requests" message={error} />

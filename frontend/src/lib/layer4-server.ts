@@ -1,5 +1,5 @@
 import { serverFetch } from './api'
-import type { CitizenQuestion, ProofQueue } from '@/types/layer4'
+import type { CitizenQuestion, ProofQueue, Waiting } from '@/types/layer4'
 
 /** Layer 4's server-side reads, kept apart from the layers below it. */
 export const getProofQueue = () => serverFetch<ProofQueue>('/proof/queue')
@@ -12,3 +12,6 @@ export const getProofQueue = () => serverFetch<ProofQueue>('/proof/queue')
  */
 export const getCitizenQuestion = (srNumber: string) =>
     serverFetch<CitizenQuestion | null>(`/proof/request/${encodeURIComponent(srNumber)}`)
+
+/** Every job waiting on the signed-in resident's answer, across their own requests. */
+export const getWaiting = () => serverFetch<Waiting>('/proof/waiting')

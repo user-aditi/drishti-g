@@ -4,6 +4,7 @@ import { THEME_BOOT_SCRIPT } from '@/components/shared/theme-toggle'
 import { SiteHeader } from '@/components/shared/site-header'
 import { SiteFooter } from '@/components/shared/site-footer'
 import { auth } from '@/lib/auth'
+import { getWaiting } from '@/lib/layer4-server'
 import './globals.css'
 
 /**
@@ -58,6 +59,18 @@ export const dynamic = 'force-dynamic'
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
     const user = await auth()
 
+    // Layer 4: how many crews are waiting on this resident's answer, shown beside
+    // their own register. A failure costs the count, never the page.
+    let counts: Record<string, number> = {}
+    if (user?.role === 'CITIZEN') {
+        try {
+            const waiting = await getWaiting()
+            if (waiting.rows.length > 0) counts = { '/my/requests': waiting.rows.length }
+        } catch {
+            counts = {}
+        }
+    }
+
     return (
         <html lang="en" suppressHydrationWarning>
             <head>
@@ -72,7 +85,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <a href="#main-content" className="skip-link">
                     Skip to main content
                 </a>
-                <SiteHeader user={user} />
+                <SiteHeader user={user} counts={counts} />
                 <main id="main-content" className="flex-1">
                     {children}
                 </main>

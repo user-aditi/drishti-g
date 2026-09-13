@@ -18,7 +18,7 @@
  * GRIE's factors, so a crew whose submission is refused can be told exactly
  * which check failed and why.
  */
-import { ProofOutcome, type Prisma, type PrismaClient } from '@prisma/client'
+import { ProofOutcome, RequestStatus, type Prisma, type PrismaClient } from '@prisma/client'
 import { env } from '../config/env.js'
 import { distanceMetres } from './exif.js'
 import { hamming } from './proofImage.js'
@@ -336,7 +336,12 @@ export function withCitizenVerdict(result: Assessment, confirmed: boolean): Asse
 export async function sweepSilentCitizens(db: PrismaClient, now: Date = new Date()) {
   const cutoff = new Date(now.getTime() - env.CITIZEN_GRACE_HOURS * 3_600_000)
   const waiting = await db.workProof.findMany({
-    where: { outcome: ProofOutcome.NEEDS_CITIZEN, updatedAt: { lt: cutoff } },
+    where: {
+      outcome: ProofOutcome.NEEDS_CITIZEN,
+      updatedAt: { lt: cutoff },
+      // A closed request has nothing left to confirm, so there is nothing to decide.
+      workOrder: { request: { status: { not: RequestStatus.CLOSED } } },
+    },
     select: { id: true, workOrderId: true, score: true },
   })
 

@@ -182,6 +182,10 @@ export function CrewJob({ code }: { code: string }) {
                     )}
                     {submission && <ProofChecks proof={submission.proof} />}
                 </div>
+            ) : job.requestClosed ? (
+                <div className="rounded-[var(--radius)] border border-line bg-sunk px-4 py-3 text-lg text-ink-mid">
+                    This request has been closed, so the job was withdrawn. There is nothing left to do.
+                </div>
             ) : job.state === 'EXPIRED' ? (
                 <div className="rounded-[var(--radius)] border border-stop/35 bg-stop-soft px-4 py-3 text-lg text-stop">
                     This code has expired. Ask the officer for a new one.

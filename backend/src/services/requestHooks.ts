@@ -1,4 +1,4 @@
-import type { Prisma, ServiceRequest } from '@prisma/client'
+import type { Prisma, RequestStatus, ServiceRequest } from '@prisma/client'
 
 /**
  * Where a later layer attaches to a filing, without Layer 0 knowing it exists.
@@ -30,4 +30,36 @@ export async function runFiledHooks(
   request: ServiceRequest,
 ): Promise<void> {
   for (const hook of filedHooks.values()) await hook(tx, request)
+}
+
+/**
+ * The same arrangement for status changes.
+ *
+ * Closing a request is a Layer 0 act, and a later layer can have work of its own
+ * hanging off the request that closing should settle — jobs still out on the
+ * street, for one. The transition runs these inside its own transaction and
+ * knows nothing about what they are, exactly as filing does.
+ */
+export interface StatusChange {
+  request: ServiceRequest
+  from: RequestStatus
+  to: RequestStatus
+  at: Date
+  actorId: number | null
+  actorLabel: string
+}
+
+export type StatusChangedHook = (tx: Prisma.TransactionClient, change: StatusChange) => Promise<void>
+
+const statusHooks = new Map<string, StatusChangedHook>()
+
+export function onStatusChanged(name: string, hook: StatusChangedHook): void {
+  statusHooks.set(name, hook)
+}
+
+export async function runStatusChangedHooks(
+  tx: Prisma.TransactionClient,
+  change: StatusChange,
+): Promise<void> {
+  for (const hook of statusHooks.values()) await hook(tx, change)
 }

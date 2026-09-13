@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { WorkOrderPanel } from './work-orders'
 import { LayerMark, StaffName } from '@/components/layer1/marks'
+import { OfficerStatus } from '@/components/layer1/officer-status'
 import { RequestDetail } from '@/components/request/request-detail'
 import { ErrorNotice } from '@/components/shared/notices'
 import { PageHeading, PageShell } from '@/components/shared/page-heading'
@@ -63,6 +64,14 @@ export default async function OfficerRequestPage({ params }: { params: { srNumbe
     }
 
     const isHolder = user.role === 'OFFICER' && request.accountable?.id === user.id
+    // Who may change the status: the officer who answers for it, or a supervisor
+    // of its agency — the same rule the API enforces.
+    const canChangeStatus = isHolder || user.role === 'SUPERVISOR'
+    // The latest crew report, offered as the resolution note when closing.
+    const crewNote =
+        [...request.workOrders]
+            .filter((order) => order.state === 'COMPLETED' && order.completionNote)
+            .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))[0]?.completionNote ?? null
     const open = request.status !== 'CLOSED'
 
     return (
@@ -112,6 +121,26 @@ export default async function OfficerRequestPage({ params }: { params: { srNumbe
                             </div>
                         </PanelBody>
                     </Panel>
+                    {canChangeStatus && (
+                        <Panel>
+                            <PanelHeader>
+                                <PanelTitle>
+                                    <span className="inline-flex items-center gap-3">
+                                        Status <LayerMark />
+                                    </span>
+                                </PanelTitle>
+                            </PanelHeader>
+                            <PanelBody>
+                                <OfficerStatus
+                                    requestId={request.id}
+                                    current={request.status}
+                                    isImported={request.isImported}
+                                    hasNote={Boolean(request.resolutionNote)}
+                                    crewNote={crewNote}
+                                />
+                            </PanelBody>
+                        </Panel>
+                    )}
                     {escalations && <EscalationPanel data={escalations} />}
                     </div>
                 }

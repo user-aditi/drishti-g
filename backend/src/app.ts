@@ -21,7 +21,8 @@ import { adminRouter } from './routes/admin.js'
 import { riskRouter } from './routes/risk.js'
 import { routingRouter } from './routes/routing.js'
 import { assignOnFiling } from './services/assignment.js'
-import { onFiled } from './services/requestHooks.js'
+import { withdrawWorkOnClose } from './services/workOrder.js'
+import { onFiled, onStatusChanged } from './services/requestHooks.js'
 
 /**
  * Where the layers are composed — the one file allowed to know about all of
@@ -64,6 +65,8 @@ export function createApp(): Express {
   // Every new request leaves its filing transaction with an accountable
   // officer, when one is posted to its board or borough.
   onFiled('layer1:assign-on-filing', assignOnFiling)
+  // And a request that is closed takes its unfinished jobs off the street.
+  onStatusChanged('layer1:withdraw-work-on-close', withdrawWorkOnClose)
   app.use(`${api}/officer`, officerRouter)
   app.use(`${api}/work-orders`, workOrdersRouter)
   app.use(api, supervisorRouter)

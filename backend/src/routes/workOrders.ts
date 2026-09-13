@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { env } from '../config/env.js'
 import { prisma } from '../lib/prisma.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
+import { rateLimit } from '../middleware/rateLimit.js'
 import { validate } from '../middleware/validate.js'
 import * as audit from '../services/audit.js'
 import { qrDataUrl } from '../services/qr.js'
@@ -14,7 +15,7 @@ import {
   stateOf,
   workerLink,
 } from '../services/workOrder.js'
-import { AppError, asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
+import { asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
 
 /**
  * Work orders. Layer 1 — nothing here exists in NYC 311.
@@ -34,26 +35,19 @@ export const workOrdersRouter: Router = Router()
 const DAY_MS = 86_400_000
 
 /**
- * A small rate limit, in memory, on the open endpoints.
+ * The crew surface's budget, shared with Layer 4's photograph route.
  *
- * Enough to stop one machine walking the code space. A real deployment puts
- * this at the edge; keeping a version here means the open endpoint is never
- * completely unguarded, including in development.
+ * Enough to stop one machine walking the code space. It is a named budget, so
+ * every route a crew can reach draws on the same count — including Layer 4's,
+ * which takes this completion in its multipart form. Before Phase 9 that route
+ * sat in front of the limit here and was not limited at all.
  */
-const attempts = new Map<string, { count: number; resetAt: number }>()
-const WINDOW_MS = 60_000
-const MAX_PER_WINDOW = 30
-
-function rateLimited(key: string): boolean {
-  const now = Date.now()
-  const entry = attempts.get(key)
-  if (!entry || entry.resetAt < now) {
-    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS })
-    return false
-  }
-  entry.count++
-  return entry.count > MAX_PER_WINDOW
-}
+export const crewLimit = rateLimit({
+  bucket: 'crew',
+  windowMs: 60_000,
+  max: 30,
+  message: 'Too many attempts — wait a minute',
+})
 
 // ---------------------------------------------------------------------------
 // Issuing — the accountable officer, signed in
@@ -185,6 +179,7 @@ async function loadByCode(raw: string) {
       request: {
         select: {
           srNumber: true,
+          status: true,
           address: true,
           latitude: true,
           longitude: true,
@@ -201,12 +196,15 @@ async function loadByCode(raw: string) {
 
 workOrdersRouter.get(
   '/:code',
+  crewLimit,
   asyncHandler(async (req, res) => {
-    if (rateLimited(req.ip ?? 'unknown')) throw new AppError(429, 'Too many attempts — wait a minute')
     const order = await loadByCode(String(req.params.code))
     res.json({
       code: order.code,
       state: stateOf(order),
+      // Closing a request withdraws its jobs; this says why, so the crew is not
+      // left thinking an officer simply changed their mind.
+      requestClosed: order.request.status === RequestStatus.CLOSED,
       issuedAt: order.issuedAt,
       expiresAt: order.expiresAt,
       completedAt: order.completedAt,
@@ -238,10 +236,15 @@ const completeSchema = z.object({ note: z.string().max(1000).optional() })
  */
 workOrdersRouter.post(
   '/:code/complete',
+  crewLimit,
   validate(completeSchema),
   asyncHandler(async (req, res) => {
-    if (rateLimited(req.ip ?? 'unknown')) throw new AppError(429, 'Too many attempts — wait a minute')
     const order = await loadByCode(String(req.params.code))
+    // Checked before the job's own state: a closed request is the real reason
+    // there is nothing to report, whatever became of the job.
+    if (order.request.status === RequestStatus.CLOSED) {
+      throw badRequest('This request has already been closed — there is nothing left to report')
+    }
     const state = stateOf(order)
     if (state === 'COMPLETED') throw badRequest('This job has already been reported done')
     if (state === 'CANCELLED') throw badRequest('This job was withdrawn by the officer')

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { Router, type ErrorRequestHandler, type Response } from 'express'
-import { ProofOutcome, Role } from '@prisma/client'
+import { ProofOutcome, RequestStatus, Role } from '@prisma/client'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { authenticate, requireRole } from '../middleware/auth.js'
@@ -11,6 +11,7 @@ import { assess, save, withCitizenVerdict, type Assessment } from '../services/p
 import { identify } from '../services/proofImage.js'
 import { normaliseCode, stateOf } from '../services/workOrder.js'
 import { AppError, asyncHandler, badRequest, forbidden, notFound } from '../utils/http.js'
+import { crewLimit } from './workOrders.js'
 
 /**
  * Photographs sent back from a job, and what they are taken to prove. Layer 4.
@@ -80,14 +81,19 @@ proofRouter.post(
     if (!req.is('multipart/form-data')) return next('router')
     next()
   },
+  // The crew's budget, shared with Layer 1's routes rather than bypassing them.
+  crewLimit,
   uploadProof,
   asyncHandler(async (req, res) => {
     const code = normaliseCode(String(req.params.code))
     const order = await prisma.workOrder.findUnique({
       where: { code },
-      include: { request: { select: { srNumber: true } } },
+      include: { request: { select: { srNumber: true, status: true } } },
     })
     if (!order) throw notFound('That code does not match any job.')
+    if (order.request.status === RequestStatus.CLOSED) {
+      throw badRequest('This request has already been closed — there is nothing left to report')
+    }
 
     const state = stateOf(order)
     if (state === 'COMPLETED') throw badRequest('This job has already been reported done')
@@ -162,6 +168,7 @@ proofRouter.post(
 /** The verdict on a job, to whoever holds its code. */
 proofRouter.get(
   '/work-orders/:code/proof',
+  crewLimit,
   asyncHandler(async (req, res) => {
     const code = normaliseCode(String(req.params.code))
     const order = await prisma.workOrder.findUnique({
@@ -198,6 +205,7 @@ proofRouter.get(
  */
 proofRouter.get(
   '/work-orders/:code/photo/:storedName',
+  crewLimit,
   asyncHandler(async (req, res) => {
     const photo = await prisma.workPhoto.findUnique({
       where: { storedName: String(req.params.storedName) },
@@ -233,11 +241,14 @@ proofRouter.post(
 
     const order = await prisma.workOrder.findUnique({
       where: { id },
-      include: { proof: true, request: { select: { citizenId: true, srNumber: true } } },
+      include: { proof: true, request: { select: { citizenId: true, srNumber: true, status: true } } },
     })
     if (!order?.proof) throw notFound('That job has no submission to judge')
     if (order.request.citizenId !== req.user!.id) {
       throw forbidden('Only the person who reported this problem can answer')
+    }
+    if (order.request.status === RequestStatus.CLOSED) {
+      throw badRequest('That request has been closed — there is nothing left to confirm')
     }
     if (order.proof.outcome !== ProofOutcome.NEEDS_CITIZEN) {
       throw badRequest('This submission is no longer waiting on you')
@@ -286,7 +297,7 @@ proofRouter.get(
     const srNumber = String(req.params.srNumber).trim().toUpperCase()
     const order = await prisma.workOrder.findFirst({
       where: {
-        request: { srNumber, citizenId: req.user!.id },
+        request: { srNumber, citizenId: req.user!.id, status: { not: RequestStatus.CLOSED } },
         proof: { outcome: ProofOutcome.NEEDS_CITIZEN },
       },
       include: { proof: true, photos: { orderBy: { id: 'asc' } } },
@@ -303,6 +314,42 @@ proofRouter.get(
       completionNote: order.completionNote,
       photos: order.photos.map((p) => ({ storedName: p.storedName, uploadedAt: p.uploadedAt })),
       proof: assessmentView(order.proof),
+    })
+  }),
+)
+
+/**
+ * Everything waiting on this resident's answer, across their own requests.
+ *
+ * The question used to appear only on the request's own page, so a resident had
+ * to happen to open the right request to be asked at all, and most jobs would
+ * simply have waited out the grace period. Closed requests are left out: there
+ * is nothing left to confirm.
+ */
+proofRouter.get(
+  '/proof/waiting',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const orders = await prisma.workOrder.findMany({
+      where: {
+        proof: { outcome: ProofOutcome.NEEDS_CITIZEN },
+        request: { citizenId: req.user!.id, status: { not: RequestStatus.CLOSED } },
+      },
+      select: {
+        id: true,
+        completedAt: true,
+        request: { select: { srNumber: true, address: true, type: { select: { name: true } } } },
+      },
+      orderBy: { completedAt: 'asc' },
+    })
+    res.json({
+      rows: orders.map((order) => ({
+        workOrderId: order.id,
+        srNumber: order.request.srNumber,
+        type: order.request.type.name,
+        address: order.request.address,
+        completedAt: order.completedAt,
+      })),
     })
   }),
 )
@@ -330,8 +377,8 @@ proofRouter.get(
         proof: { outcome: ProofOutcome.NEEDS_OFFICER },
         request:
           user.role === Role.OFFICER
-            ? { assignedOfficerId: user.id }
-            : { agencyId: user.agencyId ?? -1 },
+            ? { assignedOfficerId: user.id, status: { not: RequestStatus.CLOSED } }
+            : { agencyId: user.agencyId ?? -1, status: { not: RequestStatus.CLOSED } },
       },
       include: {
         proof: true,

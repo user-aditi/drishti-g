@@ -136,6 +136,12 @@ export default async function VerifyPage() {
 
                                                 {row.proof && <ProofChecks proof={row.proof} />}
                                                 <DecideProof workOrderId={row.workOrderId} />
+                                                <Link
+                                                    href={`/officer/sr/${encodeURIComponent(row.request.srNumber)}#status`}
+                                                    className="text-sm text-brand underline underline-offset-2"
+                                                >
+                                                    Once the work is accepted, close the request here
+                                                </Link>
                                             </div>
                                         </PanelBody>
                                     </Panel>

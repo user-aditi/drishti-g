@@ -98,6 +98,8 @@ export interface PublicWorkOrder {
         longitude: number | null
     }
     issuedBy: { name: string; isSynthetic: boolean }
+    /** The request this job was for has been closed, which withdraws the job. */
+    requestClosed: boolean
 }
 
 export interface WorkOrderQr {
